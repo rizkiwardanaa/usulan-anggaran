@@ -61,8 +61,33 @@ if menu == "📤 Form Usulan Prodi":
             
         st.markdown("---")
         st.markdown("### 2️⃣ Rincian RAB")
-        df_template = pd.DataFrame([{"Rincian Belanja": "", "Volume": 0, "Satuan": "", "Harga Satuan": 0}])
-        edited_df = st.data_editor(df_template, num_rows="dynamic", use_container_width=True, hide_index=True)
+        
+        # Tabel default kosong
+        df_template = pd.DataFrame([{"Rincian Belanja": "", "Volume": 0, "Satuan": "Orang", "Harga Satuan": 0}])
+        
+        # Konfigurasi Editor dengan Kolom Dropdown untuk Satuan
+        edited_df = st.data_editor(
+            df_template, 
+            num_rows="dynamic", 
+            use_container_width=True, 
+            hide_index=True,
+            column_config={
+                "Rincian Belanja": st.column_config.TextColumn("Rincian Belanja", required=True, width="large"),
+                "Volume": st.column_config.NumberColumn("Volume", min_value=0, required=True),
+                "Satuan": st.column_config.SelectboxColumn(
+                    "Satuan",
+                    help="Pilih satuan volume dari daftar",
+                    options=["Unit", "Orang", "Hari", "Bulan", "Tahun", "Jam", "Paket", "Stel", "Kegiatan"],
+                    required=True
+                ),
+                "Harga Satuan": st.column_config.NumberColumn(
+                    "Harga Satuan (Rp)", 
+                    help="Ketik nominal tanpa titik/koma",
+                    min_value=0, 
+                    required=True
+                )
+            }
+        )
         
         submit = st.form_submit_button("Kirim Usulan")
         
@@ -103,7 +128,6 @@ elif menu == "📊 Dashboard Fakultas (Admin)":
 
         st.markdown("---")
         
-        # TAB MENU
         tab1, tab2, tab3 = st.tabs(["📋 Review Per Prodi", "🗑️ Manajemen Data (Hapus)", "🤖 Komparasi & Insight Pintar"])
         
         # --- TAB 1: REVIEW DATA ---
@@ -127,7 +151,7 @@ elif menu == "📊 Dashboard Fakultas (Admin)":
                 elif status_saat_ini == "Perlu Revisi": status_icon = "⚠️"
                 elif status_saat_ini == "Ditolak": status_icon = "❌"
                 
-                with st.expander(f"{status_icon} {keg.upper()} | Rp {total_keg:,.0f} | Status: {status_saat_ini}"):
+                with st.expander(f"{status_icon} {keg.upper()} | Rp {total_keg:,.0f} | Status: {status_saat_ini}".replace(',', '.')):
                     
                     st.markdown("#### 📝 Panel Review Fakultas")
                     col_stat, col_note = st.columns([1, 2])
@@ -160,7 +184,10 @@ elif menu == "📊 Dashboard Fakultas (Admin)":
                         column_config={
                             "Hapus": st.column_config.CheckboxColumn("Hapus?", default=False),
                             "Rincian_Belanja": st.column_config.TextColumn("Rincian Belanja", disabled=True),
-                            "Total_Usulan": st.column_config.NumberColumn("Subtotal (Rp)", format="Rp %d")
+                            "Volume": st.column_config.NumberColumn("Vol", disabled=True),
+                            "Satuan": st.column_config.TextColumn("Satuan", disabled=True),
+                            "Harga_Satuan": st.column_config.NumberColumn("Harga Satuan (Rp)", disabled=True),
+                            "Total_Usulan": st.column_config.NumberColumn("Subtotal (Rp)", disabled=True)
                         },
                         hide_index=True, use_container_width=True, key=f"editor_{selected_prodi}_{keg}"
                     )
@@ -204,29 +231,25 @@ elif menu == "📊 Dashboard Fakultas (Admin)":
             st.subheader("🤖 Analisis & Komparasi Otomatis")
             st.write("Sistem membaca seluruh usulan dan menyusun ringkasan eksekutif untuk Anda.")
             
-            # Algoritma Pembacaan Data
             total_anggaran = df_usulan['Total_Usulan'].sum()
             prodi_terbesar = df_usulan.groupby('Program_Studi')['Total_Usulan'].sum().idxmax()
             nilai_terbesar = df_usulan.groupby('Program_Studi')['Total_Usulan'].sum().max()
             persentase_terbesar = (nilai_terbesar / total_anggaran) * 100 if total_anggaran > 0 else 0
             
-            # Mencari item paling mahal
             item_termahal = df_usulan.loc[df_usulan['Total_Usulan'].idxmax()]
             
-            # Status usulan
             status_counts = df_usulan['Status'].value_counts()
             jml_disetujui = status_counts.get("Disetujui", 0)
             jml_menunggu = status_counts.get("Menunggu Review", 0)
             
-            # Teks Analisis bergaya AI
             st.markdown("### 💡 Ringkasan Laporan Pimpinan:")
             st.info(f"""
             Berdasarkan data usulan yang masuk hingga hari ini, total anggaran yang diajukan oleh Program Studi mencapai **Rp {total_anggaran:,.0f}**.
             
-            * 📊 **Prodi dengan Usulan Tertinggi:** **{prodi_terbesar}** memimpin usulan anggaran sebesar **Rp {nilai_terbesar:,.0f}**. Ini setara dengan **{persentase_terbesar:.1f}%** dari total seluruh usulan di Fakultas Ilmu Budaya.
+            * 📊 **Prodi dengan Usulan Tertinggi:** **{prodi_terbesar}** memimpin usulan anggaran sebesar **Rp {nilai_terbesar:,.0f}**. Ini setara dengan **{persentase_terbesar:.1f}%** dari total seluruh usulan.
             * 💸 **Item Rincian Termahal:** Terdapat alokasi dana tunggal terbesar pada Prodi **{item_termahal['Program_Studi']}** untuk rincian belanja **"{item_termahal['Rincian_Belanja']}"** (Kegiatan: {item_termahal['Nama_Kegiatan']}) senilai **Rp {item_termahal['Total_Usulan']:,.0f}**. Mohon cek rasionalitas SBM-nya.
             * ⏳ **Progres Review Fakultas:** Saat ini terdapat **{jml_menunggu} rincian** yang masih menunggu persetujuan (Menunggu Review), dan **{jml_disetujui} rincian** yang telah berstatus Disetujui.
-            """)
+            """.replace(',', '.'))
             
             st.markdown("---")
             st.markdown("### 📊 Visualisasi Perbandingan Prodi")
