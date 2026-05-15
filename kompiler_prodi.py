@@ -11,14 +11,12 @@ st.set_page_config(page_title="Kompiler Usulan Anggaran FIB", page_icon="🔐", 
 FILE_DATABASE = "database_usulan_prodi.csv"
 UPLOAD_DIR = "tor_uploads"
 
-# Membuat folder otomatis untuk menyimpan file PDF jika belum ada
 if not os.path.exists(UPLOAD_DIR):
     os.makedirs(UPLOAD_DIR)
 
 def load_data():
     if os.path.exists(FILE_DATABASE):
         df = pd.read_csv(FILE_DATABASE)
-        # Menambahkan kolom baru secara otomatis untuk database lama
         if "Status" not in df.columns: df["Status"] = "Menunggu Review"
         if "Catatan_Fakultas" not in df.columns: df["Catatan_Fakultas"] = "-"
         if "File_TOR" not in df.columns: df["File_TOR"] = "-"
@@ -92,7 +90,6 @@ if st.session_state["role"] == "prodi":
             nama_keg = c1.text_input("Nama Kegiatan Utama")
             prio = c2.selectbox("Prioritas", ["Tinggi", "Sedang", "Rendah"])
             
-            # --- FITUR UPLOAD TOR ---
             st.markdown("### 📄 Dokumen Pendukung")
             file_tor = st.file_uploader("Upload Dokumen TOR/KAK (Opsional, PDF, Maks. 5MB)", type=["pdf"])
             
@@ -110,13 +107,11 @@ if st.session_state["role"] == "prodi":
                     path_tor = "-"
                     is_valid = True
                     
-                    # Logika Penyimpanan File TOR
                     if file_tor is not None:
                         if file_tor.size > 5 * 1024 * 1024:
                             st.error("Gagal! Ukuran file TOR melebihi 5MB.")
                             is_valid = False
                         else:
-                            # Membersihkan nama file agar aman disimpan di Windows
                             safe_keg_name = "".join([c for c in nama_keg if c.isalpha() or c.isdigit()]).rstrip()
                             file_name = f"TOR_{st.session_state['username']}_{safe_keg_name}.pdf"
                             path_tor = os.path.join(UPLOAD_DIR, file_name)
@@ -136,7 +131,7 @@ if st.session_state["role"] == "prodi":
                             })
                         df_usulan = pd.concat([df_usulan, pd.DataFrame(new_entries)], ignore_index=True)
                         save_data(df_usulan)
-                        st.success("Usulan dan TOR berhasil terkirim!"); st.rerun()
+                        st.success("Usulan berhasil terkirim!"); st.rerun()
 
     # --- TAB: MONITORING & REVISI ---
     with tab_riwayat:
@@ -161,7 +156,6 @@ if st.session_state["role"] == "prodi":
             if status_keg == "Perlu Revisi":
                 st.warning("⚠️ **Mode Revisi Aktif:** Perbaiki rincian atau upload ulang TOR jika diminta.")
                 
-                # Uploader opsional untuk menimpa TOR lama saat revisi
                 file_tor_revisi = st.file_uploader("📄 Upload TOR Pengganti (Opsional, PDF, Maks. 5MB)", type=["pdf"], key="tor_rev")
                 if tor_saat_ini != "-":
                     st.caption("📝 *Anda sudah memiliki TOR untuk kegiatan ini. Abaikan kotak di atas jika TOR tidak perlu diubah.*")
@@ -172,7 +166,7 @@ if st.session_state["role"] == "prodi":
                 })
                 
                 if st.button("🚀 Kirim Ulang Perbaikan"):
-                    path_tor_baru = tor_saat_ini # Default gunakan TOR lama
+                    path_tor_baru = tor_saat_ini 
                     is_valid_rev = True
                     
                     if file_tor_revisi is not None:
@@ -187,7 +181,6 @@ if st.session_state["role"] == "prodi":
                                 f.write(file_tor_revisi.getbuffer())
 
                     if is_valid_rev:
-                        # Hapus data lama & Simpan data baru
                         df_usulan = df_usulan[~((df_usulan["Program_Studi"] == st.session_state["nama_user"]) & (df_usulan["Nama_Kegiatan"] == sel_keg))]
                         
                         rev_entries = []
@@ -204,8 +197,37 @@ if st.session_state["role"] == "prodi":
                         save_data(df_usulan)
                         st.success("Revisi berhasil dikirim!"); st.rerun()
             else:
+                # Tampilan Read-only
                 df_view = df_curr[["Rincian_Belanja", "Volume", "Satuan", "Harga_Satuan", "Total_Usulan"]]
                 st.table(df_view.style.format({"Harga_Satuan": "{:,.0f}", "Total_Usulan": "{:,.0f}"}))
+                
+                # --- FITUR BARU: UPDATE/SUSULAN TOR TANPA REVISI RINCIAN ---
+                with st.expander("📄 Susulan / Update Dokumen TOR"):
+                    if tor_saat_ini != "-":
+                        st.info("✅ Dokumen TOR sudah terlampir. Anda dapat mengunggah file baru di bawah ini untuk menggantinya.")
+                    else:
+                        st.warning("⚠️ Belum ada dokumen TOR untuk kegiatan ini. Silakan unggah dokumen susulan.")
+                    
+                    new_tor = st.file_uploader("Upload Dokumen Baru (PDF, Maks. 5MB)", type=["pdf"], key=f"up_tor_{sel_keg}")
+                    if st.button("💾 Simpan Dokumen", key=f"btn_up_tor_{sel_keg}"):
+                        if new_tor is not None:
+                            if new_tor.size > 5 * 1024 * 1024:
+                                st.error("Gagal! Ukuran melebihi 5MB.")
+                            else:
+                                safe_keg_name = "".join([c for c in sel_keg if c.isalpha() or c.isdigit()]).rstrip()
+                                file_name = f"TOR_UPDATE_{st.session_state['username']}_{safe_keg_name}.pdf"
+                                path_tor_baru = os.path.join(UPLOAD_DIR, file_name)
+                                with open(path_tor_baru, "wb") as f:
+                                    f.write(new_tor.getbuffer())
+                                
+                                # Mengupdate path TOR di database untuk kegiatan terkait
+                                mask = (df_usulan["Program_Studi"] == st.session_state["nama_user"]) & (df_usulan["Nama_Kegiatan"] == sel_keg)
+                                df_usulan.loc[mask, "File_TOR"] = path_tor_baru
+                                save_data(df_usulan)
+                                st.success("Dokumen TOR berhasil disusulkan/diperbarui!")
+                                st.rerun()
+                        else:
+                            st.error("Silakan pilih file PDF terlebih dahulu!")
 
 # ==========================================
 # 5B. TAMPILAN ADMIN
@@ -222,7 +244,6 @@ elif st.session_state["role"] == "admin":
                 df_k = df_p[df_p["Nama_Kegiatan"] == k].copy()
                 with st.expander(f"{k.upper()} | Rp {df_k['Total_Usulan'].sum():,.0f} | Status: {df_k['Status'].iloc[0]}"):
                     
-                    # --- MENAMPILKAN TOMBOL DOWNLOAD TOR JIKA ADA ---
                     tor_path = df_k["File_TOR"].iloc[0]
                     if tor_path != "-" and os.path.exists(tor_path):
                         with open(tor_path, "rb") as f:
@@ -248,13 +269,11 @@ elif st.session_state["role"] == "admin":
                     
                     st.dataframe(df_k[["Rincian_Belanja", "Volume", "Satuan", "Harga_Satuan", "Total_Usulan"]], hide_index=True)
                     
-        # Tab 2 & 3 tetap sama
         with tab2:
             st.subheader("🗑️ Hapus Data")
             opsi_hapus = {idx: f"[{row['Program_Studi']}] {row['Nama_Kegiatan']} ➡️ {row['Rincian_Belanja']}" for idx, row in df_usulan.iterrows()}
             sel_h = st.selectbox("Pilih Rincian:", options=list(opsi_hapus.keys()), format_func=lambda x: opsi_hapus[x])
             if st.button("🚨 Hapus Permanen", type="primary"):
-                # Opsi: Jika ingin membersihkan file TOR yang tidak terpakai, bisa ditambahkan kode os.remove() di sini
                 df_usulan = df_usulan.drop(index=sel_h).reset_index(drop=True)
                 save_data(df_usulan); st.success("Terhapus!"); st.rerun()
         with tab3:
