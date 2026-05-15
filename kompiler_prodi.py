@@ -9,15 +9,12 @@ from io import BytesIO
 # ==========================================
 st.set_page_config(page_title="Kompiler Usulan Anggaran FIB", page_icon="📝", layout="wide")
 
-# Path folder sesuai permintaan
-BASE_DIR = r"C:\Users\rizki\OneDrive\Documents\Project Python\Dashboard Anggaran"
+# Menggunakan pencari alamat otomatis (Bisa untuk Local Windows maupun Server Cloud)
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 FILE_DB = os.path.join(BASE_DIR, "database_usulan_prodi.db")
-FILE_CSV_LAMA = os.path.join(BASE_DIR, "database_usulan_prodi.csv") # <-- INI PERBAIKANNYA
+FILE_CSV_LAMA = os.path.join(BASE_DIR, "database_usulan_prodi.csv")
 UPLOAD_DIR = os.path.join(BASE_DIR, "tor_uploads")
 
-# Pastikan folder database dan upload tersedia
-if not os.path.exists(BASE_DIR):
-    os.makedirs(BASE_DIR)
 if not os.path.exists(UPLOAD_DIR):
     os.makedirs(UPLOAD_DIR)
 
