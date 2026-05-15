@@ -52,7 +52,7 @@ if menu == "📤 Form Usulan Prodi":
         with col1:
             prodi = st.selectbox("Program Studi / Unit:", [
                 "Sastra Indonesia", "Sastra Inggris", "Etnomusikologi",
-                "Kajian Budaya (S2)", "Pariwisata Budaya"
+                "Tari", "Kajian Budaya (S2)"
             ])
         with col2:
             nama_kegiatan = st.text_input("Nama Kegiatan Utama")
