@@ -101,6 +101,7 @@ if st.session_state["role"] == "prodi":
     st.title(f"📍 Panel Usulan: {st.session_state['nama_user']}")
     tab_dash, tab_baru, tab_riwayat = st.tabs(["📊 Dashboard Prodi", "📤 Buat Usulan Baru", "📜 Monitoring & Revisi"])
 
+    # --- TAB 1: DASHBOARD PRODI ---
     with tab_dash:
         my_data = df_usulan[df_usulan["Program_Studi"] == st.session_state["nama_user"]]
         col1, col2, col3 = st.columns(3)
@@ -121,7 +122,34 @@ if st.session_state["role"] == "prodi":
         insights.append("ℹ️ **Saran SBM 2026:** Gunakan tarif Kalimantan Timur sesuai PMK Standar Biaya Masukan 2026.")
         for item in insights: st.write(item)
 
-# --- TAB 2: INPUT BARU ---
+        st.markdown("---")
+        st.markdown("#### Daftar Kegiatan & Anggaran Terajukan")
+        if not my_data.empty:
+            rekap_keg = my_data.groupby(["Nama_Kegiatan", "Status"])["Total_Usulan"].sum().reset_index()
+            rekap_keg.columns = ["Nama Kegiatan", "Status Saat Ini", "Total Anggaran (Rp)"]
+            st.table(rekap_keg.style.format({"Total Anggaran (Rp)": "{:,.0f}"}))
+            
+            # FITUR BARU: Menampilkan daftar rincian riil semua kegiatan yang sudah diinput oleh Prodi
+            st.markdown("#### 📋 Rincian Detail Seluruh Usulan Belanja")
+            df_tampil_prodi = my_data[["Tanggal_Input", "Nama_Kegiatan", "Rincian_Belanja", "Volume", "Satuan", "Harga_Satuan", "Total_Usulan", "Status", "Catatan_Fakultas"]].copy()
+            st.dataframe(
+                df_tampil_prodi,
+                column_config={
+                    "Tanggal_Input": "Tanggal Input",
+                    "Nama_Kegiatan": "Nama Kegiatan",
+                    "Rincian_Belanja": "Rincian Belanja",
+                    "Harga_Satuan": st.column_config.NumberColumn("Harga Satuan (Rp)", format="%d"),
+                    "Total_Usulan": st.column_config.NumberColumn("Total (Rp)", format="%d"),
+                    "Status": "Status Verifikasi",
+                    "Catatan_Fakultas": "Catatan Fakultas"
+                },
+                hide_index=True,
+                use_container_width=True
+            )
+        else:
+            st.info("Belum ada data kegiatan.")
+
+    # --- TAB 2: INPUT BARU ---
     with tab_baru:
         with st.form("form_input", clear_on_submit=True):
             nama_keg = st.text_input("Nama Kegiatan Utama")
@@ -138,7 +166,6 @@ if st.session_state["role"] == "prodi":
                         path_tor = os.path.join(UPLOAD_DIR, f"TOR_{st.session_state['username']}_{nama_keg[:10]}.pdf")
                         with open(path_tor, "wb") as f: f.write(file_tor.getbuffer())
                     
-                    # PERBAIKAN TYPO ADA DI BLOK INI
                     new_data = pd.DataFrame([{
                         "Tanggal_Input": pd.Timestamp.now().strftime("%Y-%m-%d %H:%M"), 
                         "Program_Studi": st.session_state["nama_user"], "Nama_Kegiatan": nama_keg,
@@ -149,6 +176,8 @@ if st.session_state["role"] == "prodi":
                     
                     df_usulan = pd.concat([df_usulan, new_data], ignore_index=True)
                     save_data(df_usulan); st.success("Terkirim!"); st.rerun()
+
+    # --- TAB 3: MONITORING & REVISI ---
     with tab_riwayat:
         my_data = df_usulan[df_usulan["Program_Studi"] == st.session_state["nama_user"]]
         if not my_data.empty:
@@ -156,12 +185,23 @@ if st.session_state["role"] == "prodi":
             df_curr = my_data[my_data["Nama_Kegiatan"] == sel_keg]
             st.info(f"Status: {df_curr['Status'].iloc[0]} | Catatan: {df_curr['Catatan_Fakultas'].iloc[0]}")
             st.table(df_curr[["Rincian_Belanja", "Volume", "Satuan", "Harga_Satuan", "Total_Usulan"]].style.format({"Total_Usulan": "{:,.0f}"}))
+            
+            with st.expander("📄 Update / Susulan Dokumen TOR"):
+                new_tor = st.file_uploader("Upload PDF (Maks 5MB)", type=["pdf"], key=f"up_{sel_keg}")
+                if st.button("Simpan Dokumen", key=f"btn_{sel_keg}"):
+                    if new_tor:
+                        safe_name = "".join([c for c in sel_keg if c.isalnum()]).rstrip()
+                        path = os.path.join(UPLOAD_DIR, f"TOR_UPD_{st.session_state['username']}_{safe_name}.pdf")
+                        with open(path, "wb") as f: f.write(new_tor.getbuffer())
+                        df_usulan.loc[(df_usulan["Program_Studi"]==st.session_state["nama_user"]) & (df_usulan["Nama_Kegiatan"]==sel_keg), "File_TOR"] = path
+                        save_data(df_usulan); st.success("TOR Terupdate!"); st.rerun()
 
 # ==========================================
 # 5B. TAMPILAN ADMIN (FAKULTAS)
 # ==========================================
 elif st.session_state["role"] == "admin":
     st.title("📊 Dashboard Monitoring & Review")
+    st.info("Gunakan tab di bawah untuk meninjau usulan dari setiap Program Studi.")
     
     if df_usulan.empty: 
         st.warning("Data kosong.")
@@ -180,10 +220,8 @@ elif st.session_state["role"] == "admin":
             # BAGIAN 2: DRILL-DOWN DETAIL PER PRODI
             st.subheader("🔍 Detail Kegiatan Per Prodi")
             prodi_sel = st.selectbox("Pilih Prodi untuk melihat daftar kegiatan:", sorted(df_usulan["Program_Studi"].unique()))
-            
             df_p = df_usulan[df_usulan["Program_Studi"] == prodi_sel]
             
-            # Rekap Kegiatan dalam Prodi terpilih
             rekap_keg_prodi = df_p.groupby("Nama_Kegiatan")["Total_Usulan"].sum().reset_index()
             st.write(f"Berikut adalah daftar kegiatan dari **{prodi_sel}**:")
             
@@ -230,7 +268,6 @@ elif st.session_state["role"] == "admin":
                 keg_mahal = df_usulan.groupby('Nama_Kegiatan')['Total_Usulan'].sum().idxmax()
                 val_keg_mahal = df_usulan.groupby('Nama_Kegiatan')['Total_Usulan'].sum().max()
 
-                # SMART INSIGHT (TEXT BASED)
                 st.info(f"""
                 💡 **Ringkasan Eksekutif AI:**
                 Total anggaran yang diajukan saat ini adalah **Rp {tot:,.0f}**.
@@ -240,7 +277,6 @@ elif st.session_state["role"] == "admin":
                 * ⏳ **Review:** Masih ada {df_usulan['Status'].value_counts().get('Menunggu Review', 0)} rincian yang belum diproses.
                 """.replace(',', '.'))
                 
-                # GRAFIK VISUAL
                 st.markdown("### 📊 Perbandingan Anggaran antar Prodi")
                 rekap_ins = df_usulan.groupby("Program_Studi")["Total_Usulan"].sum().reset_index()
                 st.bar_chart(rekap_ins.set_index("Program_Studi")["Total_Usulan"])
