@@ -120,34 +120,37 @@ if st.session_state["role"] == "prodi":
         if len(keg_rev) > 0:
             insights.append(f"⚠️ **Tindak Lanjut Revisi:** Ada {len(keg_rev)} kegiatan perlu perbaikan.")
         insights.append("ℹ️ **Saran SBM 2026:** Gunakan tarif Kalimantan Timur sesuai PMK Standar Biaya Masukan 2026.")
-        for item in insights: st.write(item)
-
-        st.markdown("---")
-        st.markdown("#### Daftar Kegiatan & Anggaran Terajukan")
-        if not my_data.empty:
-            rekap_keg = my_data.groupby(["Nama_Kegiatan", "Status"])["Total_Usulan"].sum().reset_index()
-            rekap_keg.columns = ["Nama Kegiatan", "Status Saat Ini", "Total Anggaran (Rp)"]
-            st.table(rekap_keg.style.format({"Total Anggaran (Rp)": "{:,.0f}"}))
-            
-            # FITUR BARU: Menampilkan daftar rincian riil semua kegiatan yang sudah diinput oleh Prodi
-            st.markdown("#### 📋 Rincian Detail Seluruh Usulan Belanja")
-            df_tampil_prodi = my_data[["Tanggal_Input", "Nama_Kegiatan", "Rincian_Belanja", "Volume", "Satuan", "Harga_Satuan", "Total_Usulan", "Status", "Catatan_Fakultas"]].copy()
-            st.dataframe(
-                df_tampil_prodi,
-                column_config={
-                    "Tanggal_Input": "Tanggal Input",
-                    "Nama_Kegiatan": "Nama Kegiatan",
-                    "Rincian_Belanja": "Rincian Belanja",
-                    "Harga_Satuan": st.column_config.NumberColumn("Harga Satuan (Rp)", format="%d"),
-                    "Total_Usulan": st.column_config.NumberColumn("Total (Rp)", format="%d"),
-                    "Status": "Status Verifikasi",
-                    "Catatan_Fakultas": "Catatan Fakultas"
-                },
-                hide_index=True,
-                use_container_width=True
-            )
+        
+        if not insights:
+            st.success("✅ Seluruh usulan Anda sudah lengkap dan sedang dalam proses review.")
         else:
-            st.info("Belum ada data kegiatan.")
+            for item in insights: st.write(item)
+
+        # --- FITUR BARU: DAFTAR KEGIATAN MENGGUNAKAN EXPANDER ---
+        st.markdown("---")
+        st.markdown("### 📋 Daftar Kegiatan yang Sudah Diinput")
+        if not my_data.empty:
+            rekap_keg_prodi = my_data.groupby("Nama_Kegiatan")["Total_Usulan"].sum().reset_index()
+            
+            for k in rekap_keg_prodi["Nama_Kegiatan"]:
+                df_k = my_data[my_data["Nama_Kegiatan"] == k].copy()
+                total_keg_val = df_k["Total_Usulan"].sum()
+                status_keg = df_k["Status"].iloc[0]
+                catatan_keg = df_k["Catatan_Fakultas"].iloc[0]
+                
+                # Bikin drop-down (expander) untuk setiap kegiatan
+                with st.expander(f"📌 {k.upper()} | Total: Rp {total_keg_val:,.0f} | Status: {status_keg}".replace(',', '.')):
+                    if catatan_keg != "-":
+                        st.warning(f"**Catatan Fakultas:** {catatan_keg}")
+                    
+                    # Tampilkan tabel rincian di dalamnya
+                    st.dataframe(
+                        df_k[["Rincian_Belanja", "Volume", "Satuan", "Harga_Satuan", "Total_Usulan"]], 
+                        hide_index=True,
+                        use_container_width=True
+                    )
+        else:
+            st.info("Belum ada kegiatan yang diusulkan. Silakan buat usulan baru di tab 'Buat Usulan Baru'.")
 
     # --- TAB 2: INPUT BARU ---
     with tab_baru:
@@ -181,10 +184,35 @@ if st.session_state["role"] == "prodi":
     with tab_riwayat:
         my_data = df_usulan[df_usulan["Program_Studi"] == st.session_state["nama_user"]]
         if not my_data.empty:
-            sel_keg = st.selectbox("Pilih Kegiatan:", my_data["Nama_Kegiatan"].unique())
+            sel_keg = st.selectbox("Pilih Kegiatan untuk Direvisi/Update TOR:", my_data["Nama_Kegiatan"].unique())
             df_curr = my_data[my_data["Nama_Kegiatan"] == sel_keg]
             st.info(f"Status: {df_curr['Status'].iloc[0]} | Catatan: {df_curr['Catatan_Fakultas'].iloc[0]}")
-            st.table(df_curr[["Rincian_Belanja", "Volume", "Satuan", "Harga_Satuan", "Total_Usulan"]].style.format({"Total_Usulan": "{:,.0f}"}))
+            
+            # Mode Revisi hanya aktif jika statusnya Perlu Revisi
+            if df_curr['Status'].iloc[0] == "Perlu Revisi":
+                st.warning("⚠️ Silakan perbaiki rincian biaya di bawah ini dan klik 'Kirim Ulang Revisi'.")
+                df_to_edit = df_curr[["Rincian_Belanja", "Volume", "Satuan", "Harga_Satuan"]]
+                rev_ed = st.data_editor(df_to_edit, num_rows="dynamic", use_container_width=True, hide_index=True, column_config={
+                    "Satuan": st.column_config.SelectboxColumn("Satuan", options=["Unit", "Orang", "Hari", "Bulan", "Tahun", "Jam", "Paket", "Stel", "Kegiatan"])
+                })
+                if st.button("Kirim Ulang Revisi"):
+                    df_usulan = df_usulan[~((df_usulan["Program_Studi"]==st.session_state["nama_user"]) & (df_usulan["Nama_Kegiatan"]==sel_keg))]
+                    
+                    rev_entries = []
+                    tgl_rev = pd.Timestamp.now().strftime("%Y-%m-%d %H:%M")
+                    for _, r in rev_ed.iterrows():
+                        rev_entries.append({
+                            "Tanggal_Input": tgl_rev, "Program_Studi": st.session_state["nama_user"], "Nama_Kegiatan": sel_keg,
+                            "Rincian_Belanja": r["Rincian_Belanja"], "Volume": r["Volume"], "Satuan": r["Satuan"],
+                            "Harga_Satuan": r["Harga_Satuan"], "Total_Usulan": r["Volume"] * r["Harga_Satuan"],
+                            "Prioritas": df_curr["Prioritas"].iloc[0], "Status": "Menunggu Review", "Catatan_Fakultas": f"Revisi: {df_curr['Catatan_Fakultas'].iloc[0]}",
+                            "File_TOR": df_curr["File_TOR"].iloc[0]
+                        })
+                    df_usulan = pd.concat([df_usulan, pd.DataFrame(rev_entries)], ignore_index=True)
+                    save_data(df_usulan)
+                    st.success("Revisi berhasil dikirim!"); st.rerun()
+            else:
+                st.table(df_curr[["Rincian_Belanja", "Volume", "Satuan", "Harga_Satuan", "Total_Usulan"]].style.format({"Total_Usulan": "{:,.0f}"}))
             
             with st.expander("📄 Update / Susulan Dokumen TOR"):
                 new_tor = st.file_uploader("Upload PDF (Maks 5MB)", type=["pdf"], key=f"up_{sel_keg}")
