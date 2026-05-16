@@ -61,8 +61,7 @@ USER_CREDENTIALS = {
     "sasing": {"password": "123", "role": "prodi", "nama_tampil": "Sastra Inggris"},
     "etno": {"password": "123", "role": "prodi", "nama_tampil": "Etnomusikologi"},
     "tari": {"password": "123", "role": "prodi", "nama_tampil": "Tari"},
-    "kajian": {"password": "123", "role": "prodi", "nama_tampil": "Kajian Budaya (S2)"},
-    "p2mf": {"password": "123", "role": "prodi", "nama_tampil": "Pusat Penjaminan Mutu Fakultas"}
+    "kajian": {"password": "123", "role": "prodi", "nama_tampil": "Kajian Budaya (S2)"}
 }
 
 if "logged_in" not in st.session_state:
@@ -127,7 +126,6 @@ if st.session_state["role"] == "prodi":
         else:
             for item in insights: st.write(item)
 
-        # --- FITUR UPDATE: DAFTAR KEGIATAN INTERAKTIF (EDIT/TAMBAH/HAPUS LANGSUNG) ---
         st.markdown("---")
         st.markdown("### 📋 Daftar Kegiatan yang Sudah Diinput")
         if not my_data.empty:
@@ -145,7 +143,6 @@ if st.session_state["role"] == "prodi":
                     
                     st.caption("💡 Anda dapat langsung mengedit nilai kotak, menambah baris baru di bawah tabel, atau menghapus baris rincian belanja.")
                     
-                    # Data Editor untuk manipulasi item rincian belanja dalam kegiatan k
                     df_editable = df_k[["Rincian_Belanja", "Volume", "Satuan", "Harga_Satuan"]].reset_index(drop=True)
                     edited_keg_rows = st.data_editor(
                         df_editable,
@@ -164,8 +161,6 @@ if st.session_state["role"] == "prodi":
                     with c_btn1:
                         if st.button("💾 Simpan Perubahan", key=f"save_prod_dash_{k}"):
                             valid_edited = edited_keg_rows[edited_keg_rows["Rincian_Belanja"].str.strip() != ""]
-                            
-                            # Hapus data lama sub-kegiatan ini
                             df_usulan = df_usulan[~((df_usulan["Program_Studi"] == st.session_state["nama_user"]) & (df_usulan["Nama_Kegiatan"] == k))]
                             
                             if not valid_edited.empty:
@@ -180,7 +175,7 @@ if st.session_state["role"] == "prodi":
                                     "Harga_Satuan": r["Harga_Satuan"],
                                     "Total_Usulan": r["Volume"] * r["Harga_Satuan"],
                                     "Prioritas": df_k["Prioritas"].iloc[0] if "Prioritas" in df_k.columns else "Sedang",
-                                    "Status": "Menunggu Review",  # Set kembali ke review jika ada modifikasi data
+                                    "Status": "Menunggu Review",
                                     "Catatan_Fakultas": "-",
                                     "File_TOR": df_k["File_TOR"].iloc[0] if "File_TOR" in df_k.columns else "-"
                                 } for _, r in valid_edited.iterrows()])
@@ -249,8 +244,8 @@ if st.session_state["role"] == "prodi":
                     for _, r in rev_ed.iterrows():
                         rev_entries.append({
                             "Tanggal_Input": tgl_rev, "Program_Studi": st.session_state["nama_user"], "Nama_Kegiatan": sel_keg,
-                            "Rincian_Belanja": r["Rincian Belanja"], "Volume": r["Volume"], "Satuan": r["Satuan"],
-                            "Harga_Satuan": r["Harga Satuan"], "Total_Usulan": r["Volume"] * r["Harga Satuan"],
+                            "Rincian_Belanja": r["Rincian_Belanja"], "Volume": r["Volume"], "Satuan": r["Satuan"],
+                            "Harga_Satuan": r["Harga_Satuan"], "Total_Usulan": r["Volume"] * r["Harga_Satuan"],
                             "Prioritas": df_curr["Prioritas"].iloc[0], "Status": "Menunggu Review", "Catatan_Fakultas": f"Revisi: {df_curr['Catatan_Fakultas'].iloc[0]}",
                             "File_TOR": df_curr["File_TOR"].iloc[0]
                         })
@@ -275,7 +270,13 @@ if st.session_state["role"] == "prodi":
 # ==========================================
 elif st.session_state["role"] == "admin":
     st.title("📊 Dashboard Monitoring & Review")
-    st.info("Gunakan tab di bawah untuk meninjau usulan dari setiap Program Studi.")
+    
+    # --- FITUR BARU: TOGGLE SEMBUNYIKAN NILAI ANGGARAN ---
+    col_info, col_toggle = st.columns([3, 1])
+    with col_info:
+        st.info("Gunakan tab di bawah untuk meninjau usulan dari setiap Program Studi.")
+    with col_toggle:
+        sembunyikan_nilai = st.toggle("🙈 Sembunyikan Nominal Anggaran", value=False)
     
     if df_usulan.empty: 
         st.warning("Data kosong.")
@@ -283,13 +284,21 @@ elif st.session_state["role"] == "admin":
         tab_rev, tab_hapus, tab_ins = st.tabs(["📋 Review & Analisis", "🗑️ Manajemen Data", "🤖 Insight Fakultas"])
         
         with tab_rev:
+            # BAGIAN 1: REKAPITULASI SELURUH PRODI
             st.subheader("🏙️ Rekapitulasi Anggaran Per Prodi")
             rekap_semua = df_usulan.groupby("Program_Studi")["Total_Usulan"].sum().reset_index()
             rekap_semua.columns = ["Program Studi", "Total Usulan (Rp)"]
-            st.table(rekap_semua.style.format({"Total Usulan (Rp)": "{:,.0f}"}))
+            
+            # Logika Sembunyikan Nilai di Tabel Rekap
+            if sembunyikan_nilai:
+                rekap_semua["Total Usulan (Rp)"] = "Rp ***"
+                st.table(rekap_semua)
+            else:
+                st.table(rekap_semua.style.format({"Total Usulan (Rp)": "{:,.0f}"}))
 
             st.markdown("---")
             
+            # BAGIAN 2: DRILL-DOWN DETAIL PER PRODI
             st.subheader("🔍 Detail Kegiatan Per Prodi")
             prodi_sel = st.selectbox("Pilih Prodi untuk melihat daftar kegiatan:", sorted(df_usulan["Program_Studi"].unique()))
             df_p = df_usulan[df_usulan["Program_Studi"] == prodi_sel]
@@ -301,7 +310,10 @@ elif st.session_state["role"] == "admin":
                 df_k = df_p[df_p["Nama_Kegiatan"] == k].copy()
                 total_keg_val = df_k["Total_Usulan"].sum()
                 
-                with st.expander(f"📌 {k.upper()} | Total Usulan: Rp {total_keg_val:,.0f} | Status: {df_k['Status'].iloc[0]}".replace(',', '.')):
+                # Logika Sembunyikan Nilai di Expander Title
+                teks_nominal_expander = "Rp ***" if sembunyikan_nilai else f"Rp {total_keg_val:,.0f}".replace(',', '.')
+                
+                with st.expander(f"📌 {k.upper()} | Total Usulan: {teks_nominal_expander} | Status: {df_k['Status'].iloc[0]}"):
                     path = df_k["File_TOR"].iloc[0]
                     if path != "-" and os.path.exists(path):
                         with open(path, "rb") as f:
@@ -316,8 +328,14 @@ elif st.session_state["role"] == "admin":
                         df_usulan.loc[(df_usulan["Program_Studi"]==prodi_sel) & (df_usulan["Nama_Kegiatan"]==k), ["Status", "Catatan_Fakultas"]] = [n_s, n_n]
                         save_data(df_usulan); st.success(f"Status '{k}' diperbarui!"); st.rerun()
                     
-                    st.dataframe(df_k[["Rincian_Belanja", "Volume", "Satuan", "Harga_Satuan", "Total_Usulan"]], hide_index=True)
+                    # Logika Sembunyikan Nilai di Dataframe Detail
+                    if sembunyikan_nilai:
+                        df_tampil = df_k[["Rincian_Belanja", "Volume", "Satuan"]].copy()
+                        st.dataframe(df_tampil, hide_index=True, use_container_width=True)
+                    else:
+                        st.dataframe(df_k[["Rincian_Belanja", "Volume", "Satuan", "Harga_Satuan", "Total_Usulan"]], hide_index=True, use_container_width=True)
 
+            # Ekspor Data
             st.markdown("---")
             st.download_button("📥 Download Excel Rekapitulasi", data=df_usulan.to_csv(index=False).encode('utf-8'), file_name="Rekap_FIB_2026.csv", mime="text/csv")
 
@@ -331,25 +349,29 @@ elif st.session_state["role"] == "admin":
 
         with tab_ins:
             st.subheader("🤖 Analisis & Insight Pintar")
-            tot = df_usulan['Total_Usulan'].sum()
             
-            if tot > 0:
-                prodi_max = df_usulan.groupby('Program_Studi')['Total_Usulan'].sum().idxmax()
-                val_max = df_usulan.groupby('Program_Studi')['Total_Usulan'].sum().max()
-                keg_mahal = df_usulan.groupby('Nama_Kegiatan')['Total_Usulan'].sum().idxmax()
-                val_keg_mahal = df_usulan.groupby('Nama_Kegiatan')['Total_Usulan'].sum().max()
-
-                st.info(f"""
-                💡 **Ringkasan Eksekutif AI:**
-                Total anggaran yang diajukan saat ini adalah **Rp {tot:,.0f}**.
-                
-                * 📊 **Prodi Terbesar:** Saat ini **{prodi_max}** merupakan unit pengusul tertinggi dengan nilai **Rp {val_max:,.0f}**.
-                * 💎 **Kegiatan Prioritas Tinggi:** Kegiatan **"{keg_mahal}"** adalah pengajuan tunggal terbesar senilai **Rp {val_keg_mahal:,.0f}**.
-                * ⏳ **Review:** Masih ada {df_usulan['Status'].value_counts().get('Menunggu Review', 0)} rincian yang belum diproses.
-                """.replace(',', '.'))
-                
-                st.markdown("### 📊 Perbandingan Anggaran antar Prodi")
-                rekap_ins = df_usulan.groupby("Program_Studi")["Total_Usulan"].sum().reset_index()
-                st.bar_chart(rekap_ins.set_index("Program_Studi")["Total_Usulan"])
+            # Logika Sembunyikan Nilai di Tab Insight
+            if sembunyikan_nilai:
+                st.warning("⚠️ Insight angka dan grafik dinonaktifkan karena mode 'Sembunyikan Nominal Anggaran' sedang aktif. Silakan matikan saklar di atas untuk melihat analisis kembali.")
             else:
-                st.info("Data belum tersedia untuk analisis.")
+                tot = df_usulan['Total_Usulan'].sum()
+                if tot > 0:
+                    prodi_max = df_usulan.groupby('Program_Studi')['Total_Usulan'].sum().idxmax()
+                    val_max = df_usulan.groupby('Program_Studi')['Total_Usulan'].sum().max()
+                    keg_mahal = df_usulan.groupby('Nama_Kegiatan')['Total_Usulan'].sum().idxmax()
+                    val_keg_mahal = df_usulan.groupby('Nama_Kegiatan')['Total_Usulan'].sum().max()
+
+                    st.info(f"""
+                    💡 **Ringkasan Eksekutif AI:**
+                    Total anggaran yang diajukan saat ini adalah **Rp {tot:,.0f}**.
+                    
+                    * 📊 **Prodi Terbesar:** Saat ini **{prodi_max}** merupakan unit pengusul tertinggi dengan nilai **Rp {val_max:,.0f}**.
+                    * 💎 **Kegiatan Prioritas Tinggi:** Kegiatan **"{keg_mahal}"** adalah pengajuan tunggal terbesar senilai **Rp {val_keg_mahal:,.0f}**.
+                    * ⏳ **Review:** Masih ada {df_usulan['Status'].value_counts().get('Menunggu Review', 0)} rincian yang belum diproses.
+                    """.replace(',', '.'))
+                    
+                    st.markdown("### 📊 Perbandingan Anggaran antar Prodi")
+                    rekap_ins = df_usulan.groupby("Program_Studi")["Total_Usulan"].sum().reset_index()
+                    st.bar_chart(rekap_ins.set_index("Program_Studi")["Total_Usulan"])
+                else:
+                    st.info("Data belum tersedia untuk analisis.")
