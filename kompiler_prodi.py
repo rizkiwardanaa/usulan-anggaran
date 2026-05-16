@@ -121,6 +121,7 @@ if st.session_state["role"] == "prodi":
         insights.append("ℹ️ **Saran SBM 2026:** Gunakan tarif Kalimantan Timur sesuai PMK Standar Biaya Masukan 2026.")
         for item in insights: st.write(item)
 
+# --- TAB 2: INPUT BARU ---
     with tab_baru:
         with st.form("form_input", clear_on_submit=True):
             nama_keg = st.text_input("Nama Kegiatan Utama")
@@ -136,16 +137,18 @@ if st.session_state["role"] == "prodi":
                     if file_tor:
                         path_tor = os.path.join(UPLOAD_DIR, f"TOR_{st.session_state['username']}_{nama_keg[:10]}.pdf")
                         with open(path_tor, "wb") as f: f.write(file_tor.getbuffer())
+                    
+                    # PERBAIKAN TYPO ADA DI BLOK INI
                     new_data = pd.DataFrame([{
                         "Tanggal_Input": pd.Timestamp.now().strftime("%Y-%m-%d %H:%M"), 
                         "Program_Studi": st.session_state["nama_user"], "Nama_Kegiatan": nama_keg,
                         "Rincian_Belanja": r["Rincian Belanja"], "Volume": r["Volume"], "Satuan": r["Satuan"],
-                        "Harga_Satuan": r["Harga Satuan"], "Total_Usulan": r["Volume"] * r["Harga_Satuan"],
+                        "Harga_Satuan": r["Harga Satuan"], "Total_Usulan": r["Volume"] * r["Harga Satuan"],
                         "Prioritas": "Sedang", "Status": "Menunggu Review", "Catatan_Fakultas": "-", "File_TOR": path_tor
                     } for _, r in valid.iterrows()])
+                    
                     df_usulan = pd.concat([df_usulan, new_data], ignore_index=True)
                     save_data(df_usulan); st.success("Terkirim!"); st.rerun()
-
     with tab_riwayat:
         my_data = df_usulan[df_usulan["Program_Studi"] == st.session_state["nama_user"]]
         if not my_data.empty:
