@@ -126,7 +126,7 @@ if st.session_state["role"] == "prodi":
         else:
             for item in insights: st.write(item)
 
-        # --- FITUR BARU: DAFTAR KEGIATAN MENGGUNAKAN EXPANDER ---
+        # --- FITUR UPDATE: DAFTAR KEGIATAN INTERAKTIF (EDIT/TAMBAH/HAPUS LANGSUNG) ---
         st.markdown("---")
         st.markdown("### 📋 Daftar Kegiatan yang Sudah Diinput")
         if not my_data.empty:
@@ -138,17 +138,63 @@ if st.session_state["role"] == "prodi":
                 status_keg = df_k["Status"].iloc[0]
                 catatan_keg = df_k["Catatan_Fakultas"].iloc[0]
                 
-                # Bikin drop-down (expander) untuk setiap kegiatan
                 with st.expander(f"📌 {k.upper()} | Total: Rp {total_keg_val:,.0f} | Status: {status_keg}".replace(',', '.')):
                     if catatan_keg != "-":
                         st.warning(f"**Catatan Fakultas:** {catatan_keg}")
                     
-                    # Tampilkan tabel rincian di dalamnya
-                    st.dataframe(
-                        df_k[["Rincian_Belanja", "Volume", "Satuan", "Harga_Satuan", "Total_Usulan"]], 
-                        hide_index=True,
-                        use_container_width=True
+                    st.caption("💡 Anda dapat langsung mengedit nilai kotak, menambah baris baru di bawah tabel, atau menghapus baris rincian belanja.")
+                    
+                    # Data Editor untuk manipulasi item rincian belanja dalam kegiatan k
+                    df_editable = df_k[["Rincian_Belanja", "Volume", "Satuan", "Harga_Satuan"]].reset_index(drop=True)
+                    edited_keg_rows = st.data_editor(
+                        df_editable,
+                        num_rows="dynamic",
+                        use_container_width=True,
+                        key=f"prod_dash_ed_{k}",
+                        column_config={
+                            "Rincian_Belanja": st.column_config.TextColumn("Rincian Belanja", required=True),
+                            "Volume": st.column_config.NumberColumn("Volume", min_value=0, required=True),
+                            "Satuan": st.column_config.SelectboxColumn("Satuan", options=["Unit", "Orang", "Hari", "Bulan", "Tahun", "Jam", "Paket", "Stel", "Kegiatan"], required=True),
+                            "Harga_Satuan": st.column_config.NumberColumn("Harga Satuan (Rp)", min_value=0, required=True)
+                        }
                     )
+                    
+                    c_btn1, c_btn2 = st.columns([1, 4])
+                    with c_btn1:
+                        if st.button("💾 Simpan Perubahan", key=f"save_prod_dash_{k}"):
+                            valid_edited = edited_keg_rows[edited_keg_rows["Rincian_Belanja"].str.strip() != ""]
+                            
+                            # Hapus data lama sub-kegiatan ini
+                            df_usulan = df_usulan[~((df_usulan["Program_Studi"] == st.session_state["nama_user"]) & (df_usulan["Nama_Kegiatan"] == k))]
+                            
+                            if not valid_edited.empty:
+                                tgl_up = pd.Timestamp.now().strftime("%Y-%m-%d %H:%M")
+                                updated_entries = pd.DataFrame([{
+                                    "Tanggal_Input": tgl_up,
+                                    "Program_Studi": st.session_state["nama_user"],
+                                    "Nama_Kegiatan": k,
+                                    "Rincian_Belanja": r["Rincian_Belanja"],
+                                    "Volume": r["Volume"],
+                                    "Satuan": r["Satuan"],
+                                    "Harga_Satuan": r["Harga_Satuan"],
+                                    "Total_Usulan": r["Volume"] * r["Harga_Satuan"],
+                                    "Prioritas": df_k["Prioritas"].iloc[0] if "Prioritas" in df_k.columns else "Sedang",
+                                    "Status": "Menunggu Review",  # Set kembali ke review jika ada modifikasi data
+                                    "Catatan_Fakultas": "-",
+                                    "File_TOR": df_k["File_TOR"].iloc[0] if "File_TOR" in df_k.columns else "-"
+                                } for _, r in valid_edited.iterrows()])
+                                df_usulan = pd.concat([df_usulan, updated_entries], ignore_index=True)
+                                
+                            save_data(df_usulan)
+                            st.success("Perubahan usulan disimpan!")
+                            st.rerun()
+                            
+                    with c_btn2:
+                        if st.button("🚨 Hapus Seluruh Kegiatan Ini", key=f"del_prod_dash_{k}", type="secondary"):
+                            df_usulan = df_usulan[~((df_usulan["Program_Studi"] == st.session_state["nama_user"]) & (df_usulan["Nama_Kegiatan"] == k))]
+                            save_data(df_usulan)
+                            st.success("Kegiatan berhasil dihapus!")
+                            st.rerun()
         else:
             st.info("Belum ada kegiatan yang diusulkan. Silakan buat usulan baru di tab 'Buat Usulan Baru'.")
 
@@ -188,7 +234,6 @@ if st.session_state["role"] == "prodi":
             df_curr = my_data[my_data["Nama_Kegiatan"] == sel_keg]
             st.info(f"Status: {df_curr['Status'].iloc[0]} | Catatan: {df_curr['Catatan_Fakultas'].iloc[0]}")
             
-            # Mode Revisi hanya aktif jika statusnya Perlu Revisi
             if df_curr['Status'].iloc[0] == "Perlu Revisi":
                 st.warning("⚠️ Silakan perbaiki rincian biaya di bawah ini dan klik 'Kirim Ulang Revisi'.")
                 df_to_edit = df_curr[["Rincian_Belanja", "Volume", "Satuan", "Harga_Satuan"]]
@@ -203,8 +248,8 @@ if st.session_state["role"] == "prodi":
                     for _, r in rev_ed.iterrows():
                         rev_entries.append({
                             "Tanggal_Input": tgl_rev, "Program_Studi": st.session_state["nama_user"], "Nama_Kegiatan": sel_keg,
-                            "Rincian_Belanja": r["Rincian_Belanja"], "Volume": r["Volume"], "Satuan": r["Satuan"],
-                            "Harga_Satuan": r["Harga_Satuan"], "Total_Usulan": r["Volume"] * r["Harga_Satuan"],
+                            "Rincian_Belanja": r["Rincian Belanja"], "Volume": r["Volume"], "Satuan": r["Satuan"],
+                            "Harga_Satuan": r["Harga Satuan"], "Total_Usulan": r["Volume"] * r["Harga Satuan"],
                             "Prioritas": df_curr["Prioritas"].iloc[0], "Status": "Menunggu Review", "Catatan_Fakultas": f"Revisi: {df_curr['Catatan_Fakultas'].iloc[0]}",
                             "File_TOR": df_curr["File_TOR"].iloc[0]
                         })
@@ -237,7 +282,6 @@ elif st.session_state["role"] == "admin":
         tab_rev, tab_hapus, tab_ins = st.tabs(["📋 Review & Analisis", "🗑️ Manajemen Data", "🤖 Insight Fakultas"])
         
         with tab_rev:
-            # BAGIAN 1: REKAPITULASI SELURUH PRODI
             st.subheader("🏙️ Rekapitulasi Anggaran Per Prodi")
             rekap_semua = df_usulan.groupby("Program_Studi")["Total_Usulan"].sum().reset_index()
             rekap_semua.columns = ["Program Studi", "Total Usulan (Rp)"]
@@ -245,7 +289,6 @@ elif st.session_state["role"] == "admin":
 
             st.markdown("---")
             
-            # BAGIAN 2: DRILL-DOWN DETAIL PER PRODI
             st.subheader("🔍 Detail Kegiatan Per Prodi")
             prodi_sel = st.selectbox("Pilih Prodi untuk melihat daftar kegiatan:", sorted(df_usulan["Program_Studi"].unique()))
             df_p = df_usulan[df_usulan["Program_Studi"] == prodi_sel]
@@ -274,7 +317,6 @@ elif st.session_state["role"] == "admin":
                     
                     st.dataframe(df_k[["Rincian_Belanja", "Volume", "Satuan", "Harga_Satuan", "Total_Usulan"]], hide_index=True)
 
-            # Ekspor Data
             st.markdown("---")
             st.download_button("📥 Download Excel Rekapitulasi", data=df_usulan.to_csv(index=False).encode('utf-8'), file_name="Rekap_FIB_2026.csv", mime="text/csv")
 
