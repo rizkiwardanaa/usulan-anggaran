@@ -207,20 +207,9 @@ def generate_html_report(df_prodi, nama_prodi, hidden=False):
     </style>
     </head>
     <body>
-        <div class="footer-dokumen">
-            <div class="footer-line">
-                <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/c/cd/BLU_Speed.png/1200px-BLU_Speed.png" class="blu-logo" alt="BLU Speed">
-            </div>
-            <div class="footer-tagline">Pilar Utama Penyangga Multikulturalisme di Ibu Kota Negara Nusantara</div>
-            <div class="footer-sosmed">
-                <span><i class="icon-bulat">🌐</i> http://fib.unmul.ac.id/</span>
-                <span><i class="icon-bulat">📷</i> Ilmubudaya_unmul</span>
-                <span><i class="icon-bulat">▶</i> FAKULTAS ILMUBUDAYA UNMUL</span>
-            </div>
-        </div>
 
         <div class="kop-surat">
-            <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/e/e0/Logo_Universitas_Mulawarman.svg/1200px-Logo_Universitas_Mulawarman.svg.png" class="kop-logo" alt="Logo Unmul">
+            <img src="https://drive.google.com/file/d/13kT8UkeAomtnzXVMaVRi9KWrU2IceX4r/view?usp=sharing" class="kop-logo" alt="Logo Unmul">
             <div class="kop-teks">
                 <h1>KEMENTERIAN PENDIDIKAN TINGGI, SAINS,</h1>
                 <h1>DAN TEKNOLOGI</h1>
