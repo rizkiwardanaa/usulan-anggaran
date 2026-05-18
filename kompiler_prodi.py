@@ -142,63 +142,82 @@ if st.session_state["role"] == "prodi":
                     if catatan_keg != "-":
                         st.warning(f"**Catatan Fakultas:** {catatan_keg}")
                     
-                    st.caption("💡 **Cara Hapus Rincian:** Centang kotak pada kolom **'Hapus?'** untuk rincian yang tidak diperlukan, lalu klik Simpan Perubahan.")
-                    
-                    df_editable = df_k[["Rincian_Belanja", "Volume", "Satuan", "Harga_Satuan"]].reset_index(drop=True)
-                    # Menambahkan kolom Hapus di depan
-                    df_editable.insert(0, "Hapus", False)
-                    
-                    edited_keg_rows = st.data_editor(
-                        df_editable,
-                        num_rows="dynamic",
-                        use_container_width=True,
-                        hide_index=True,
-                        key=f"prod_dash_ed_{k}",
-                        column_config={
-                            "Hapus": st.column_config.CheckboxColumn("Hapus?", default=False),
-                            "Rincian_Belanja": st.column_config.TextColumn("Rincian Belanja", required=True),
-                            "Volume": st.column_config.NumberColumn("Volume", min_value=0, required=True),
-                            "Satuan": st.column_config.SelectboxColumn("Satuan", options=["Unit", "Orang", "Hari", "Bulan", "Tahun", "Jam", "Paket", "Stel", "Kegiatan"], required=True),
-                            "Harga_Satuan": st.column_config.NumberColumn("Harga Satuan (Rp)", min_value=0, required=True)
-                        }
-                    )
-                    
-                    c_btn1, c_btn2 = st.columns([1, 4])
-                    with c_btn1:
-                        if st.button("💾 Simpan Perubahan", key=f"save_prod_dash_{k}"):
-                            # Menyaring data: Hanya ambil yang TIDAK dicentang "Hapus" dan rinciannya tidak kosong
-                            valid_edited = edited_keg_rows[(edited_keg_rows["Hapus"] == False) & (edited_keg_rows["Rincian_Belanja"].str.strip() != "")]
-                            
-                            df_usulan = df_usulan[~((df_usulan["Program_Studi"] == st.session_state["nama_user"]) & (df_usulan["Nama_Kegiatan"] == k))]
-                            
-                            if not valid_edited.empty:
-                                tgl_up = pd.Timestamp.now().strftime("%Y-%m-%d %H:%M")
-                                updated_entries = pd.DataFrame([{
-                                    "Tanggal_Input": tgl_up,
-                                    "Program_Studi": st.session_state["nama_user"],
-                                    "Nama_Kegiatan": k,
-                                    "Rincian_Belanja": r["Rincian_Belanja"],
-                                    "Volume": r["Volume"],
-                                    "Satuan": r["Satuan"],
-                                    "Harga_Satuan": r["Harga_Satuan"],
-                                    "Total_Usulan": r["Volume"] * r["Harga_Satuan"],
-                                    "Prioritas": df_k["Prioritas"].iloc[0] if "Prioritas" in df_k.columns else "Sedang",
-                                    "Status": "Menunggu Review",
-                                    "Catatan_Fakultas": "-",
-                                    "File_TOR": df_k["File_TOR"].iloc[0] if "File_TOR" in df_k.columns else "-"
-                                } for _, r in valid_edited.iterrows()])
-                                df_usulan = pd.concat([df_usulan, updated_entries], ignore_index=True)
+                    # LOGIKA PENGUNCIAN: Hanya bisa diedit jika Menunggu Review atau Perlu Revisi
+                    if status_keg in ["Menunggu Review", "Perlu Revisi"]:
+                        # Form untuk edit Nama Kegiatan dan Prioritas
+                        col_edit1, col_edit2 = st.columns([2, 1])
+                        new_nama_keg = col_edit1.text_input("Nama Kegiatan:", value=k, key=f"edit_nama_{k}")
+                        
+                        prio_lama = df_k["Prioritas"].iloc[0] if "Prioritas" in df_k.columns else "Sedang"
+                        if prio_lama not in ["Tinggi", "Sedang", "Rendah"]: prio_lama = "Sedang"
+                        new_prio = col_edit2.selectbox("Prioritas:", ["Tinggi", "Sedang", "Rendah"], index=["Tinggi", "Sedang", "Rendah"].index(prio_lama), key=f"edit_prio_{k}")
+                        
+                        st.caption("💡 **Cara Edit/Tambah/Hapus Rincian:** Klik tabel untuk mengubah data. **Untuk menambah baris**, ketik di baris kosong paling bawah. Centang **'Hapus?'** untuk membuang baris rincian.")
+                        
+                        df_editable = df_k[["Rincian_Belanja", "Volume", "Satuan", "Harga_Satuan"]].reset_index(drop=True)
+                        df_editable.insert(0, "Hapus", False)
+                        
+                        edited_keg_rows = st.data_editor(
+                            df_editable,
+                            num_rows="dynamic",
+                            use_container_width=True,
+                            hide_index=True,
+                            key=f"prod_dash_ed_{k}",
+                            column_config={
+                                "Hapus": st.column_config.CheckboxColumn("Hapus?", default=False),
+                                "Rincian_Belanja": st.column_config.TextColumn("Rincian Belanja", required=True),
+                                "Volume": st.column_config.NumberColumn("Volume", min_value=0, required=True),
+                                "Satuan": st.column_config.SelectboxColumn("Satuan", options=["Unit", "Orang", "Hari", "Bulan", "Tahun", "Jam", "Paket", "Stel", "Kegiatan"], required=True),
+                                "Harga_Satuan": st.column_config.NumberColumn("Harga Satuan (Rp)", min_value=0, required=True)
+                            }
+                        )
+                        
+                        c_btn1, c_btn2 = st.columns([1, 4])
+                        with c_btn1:
+                            if st.button("💾 Simpan Perubahan", key=f"save_prod_dash_{k}"):
+                                edited_keg_rows["Volume"] = pd.to_numeric(edited_keg_rows["Volume"]).fillna(0)
+                                edited_keg_rows["Harga_Satuan"] = pd.to_numeric(edited_keg_rows["Harga_Satuan"]).fillna(0)
+                                edited_keg_rows["Hapus"] = edited_keg_rows["Hapus"].fillna(False)
+                                edited_keg_rows["Rincian_Belanja"] = edited_keg_rows["Rincian_Belanja"].fillna("")
                                 
-                            save_data(df_usulan)
-                            st.success("Perubahan usulan disimpan!")
-                            st.rerun()
-                            
-                    with c_btn2:
-                        if st.button("🚨 Hapus Seluruh Kegiatan Ini", key=f"del_prod_dash_{k}", type="secondary"):
-                            df_usulan = df_usulan[~((df_usulan["Program_Studi"] == st.session_state["nama_user"]) & (df_usulan["Nama_Kegiatan"] == k))]
-                            save_data(df_usulan)
-                            st.success("Kegiatan berhasil dihapus!")
-                            st.rerun()
+                                valid_edited = edited_keg_rows[(edited_keg_rows["Hapus"] == False) & (edited_keg_rows["Rincian_Belanja"].str.strip() != "")]
+                                
+                                df_usulan = df_usulan[~((df_usulan["Program_Studi"] == st.session_state["nama_user"]) & (df_usulan["Nama_Kegiatan"] == k))]
+                                
+                                if not valid_edited.empty:
+                                    tgl_up = pd.Timestamp.now().strftime("%Y-%m-%d %H:%M")
+                                    updated_entries = pd.DataFrame([{
+                                        "Tanggal_Input": tgl_up,
+                                        "Program_Studi": st.session_state["nama_user"],
+                                        "Nama_Kegiatan": new_nama_keg.strip(),
+                                        "Rincian_Belanja": r["Rincian_Belanja"],
+                                        "Volume": r["Volume"],
+                                        "Satuan": r["Satuan"],
+                                        "Harga_Satuan": r["Harga_Satuan"],
+                                        "Total_Usulan": r["Volume"] * r["Harga_Satuan"],
+                                        "Prioritas": new_prio, 
+                                        "Status": "Menunggu Review", 
+                                        "Catatan_Fakultas": "-",
+                                        "File_TOR": df_k["File_TOR"].iloc[0] if "File_TOR" in df_k.columns else "-"
+                                    } for _, r in valid_edited.iterrows()])
+                                    df_usulan = pd.concat([df_usulan, updated_entries], ignore_index=True)
+                                    
+                                save_data(df_usulan)
+                                st.success("Perubahan usulan disimpan!")
+                                st.rerun()
+                                
+                        with c_btn2:
+                            if st.button("🚨 Hapus Seluruh Kegiatan", key=f"del_prod_dash_{k}", type="secondary"):
+                                df_usulan = df_usulan[~((df_usulan["Program_Studi"] == st.session_state["nama_user"]) & (df_usulan["Nama_Kegiatan"] == k))]
+                                save_data(df_usulan)
+                                st.success("Seluruh kegiatan berhasil dihapus!")
+                                st.rerun()
+                    
+                    else:
+                        # TAMPILAN JIKA STATUS DISETUJUI / DITOLAK (TERKUNCI)
+                        st.info(f"🔒 Data tidak dapat diedit/dihapus karena telah menerima keputusan Fakultas (**{status_keg}**).")
+                        st.dataframe(df_k[["Rincian_Belanja", "Volume", "Satuan", "Harga_Satuan", "Total_Usulan"]], hide_index=True, use_container_width=True)
+
         else:
             st.info("Belum ada kegiatan yang diusulkan. Silakan buat usulan baru di tab 'Buat Usulan Baru'.")
 
@@ -236,10 +255,12 @@ if st.session_state["role"] == "prodi":
         if not my_data.empty:
             sel_keg = st.selectbox("Pilih Kegiatan untuk Direvisi/Update TOR:", my_data["Nama_Kegiatan"].unique())
             df_curr = my_data[my_data["Nama_Kegiatan"] == sel_keg]
-            st.info(f"Status: {df_curr['Status'].iloc[0]} | Catatan: {df_curr['Catatan_Fakultas'].iloc[0]}")
+            status_saat_ini = df_curr['Status'].iloc[0]
+            st.info(f"Status: {status_saat_ini} | Catatan: {df_curr['Catatan_Fakultas'].iloc[0]}")
             
-            if df_curr['Status'].iloc[0] == "Perlu Revisi":
-                st.warning("⚠️ Silakan perbaiki rincian biaya di bawah ini (Centang 'Hapus?' untuk membuang rincian) dan klik 'Kirim Ulang Revisi'.")
+            # LOGIKA PENGUNCIAN: Hanya bisa diedit jika Menunggu Review atau Perlu Revisi
+            if status_saat_ini in ["Menunggu Review", "Perlu Revisi"]:
+                st.warning("⚠️ Silakan perbaiki rincian biaya di bawah ini (Centang 'Hapus?' untuk membuang rincian, atau tambah baris kosong di bawah) dan klik 'Kirim Ulang Revisi'.")
                 
                 df_to_edit = df_curr[["Rincian_Belanja", "Volume", "Satuan", "Harga_Satuan"]].reset_index(drop=True)
                 df_to_edit.insert(0, "Hapus", False)
@@ -249,6 +270,11 @@ if st.session_state["role"] == "prodi":
                     "Satuan": st.column_config.SelectboxColumn("Satuan", options=["Unit", "Orang", "Hari", "Bulan", "Tahun", "Jam", "Paket", "Stel", "Kegiatan"])
                 })
                 if st.button("Kirim Ulang Revisi"):
+                    rev_ed["Volume"] = pd.to_numeric(rev_ed["Volume"]).fillna(0)
+                    rev_ed["Harga_Satuan"] = pd.to_numeric(rev_ed["Harga_Satuan"]).fillna(0)
+                    rev_ed["Hapus"] = rev_ed["Hapus"].fillna(False)
+                    rev_ed["Rincian_Belanja"] = rev_ed["Rincian_Belanja"].fillna("")
+                    
                     valid_rev = rev_ed[(rev_ed["Hapus"] == False) & (rev_ed["Rincian_Belanja"].str.strip() != "")]
                     
                     df_usulan = df_usulan[~((df_usulan["Program_Studi"]==st.session_state["nama_user"]) & (df_usulan["Nama_Kegiatan"]==sel_keg))]
@@ -269,6 +295,7 @@ if st.session_state["role"] == "prodi":
                     save_data(df_usulan)
                     st.success("Revisi berhasil dikirim!"); st.rerun()
             else:
+                st.info(f"🔒 Data tidak dapat diedit karena status saat ini: **{status_saat_ini}**.")
                 st.table(df_curr[["Rincian_Belanja", "Volume", "Satuan", "Harga_Satuan", "Total_Usulan"]].style.format({"Total_Usulan": "{:,.0f}"}))
             
             with st.expander("📄 Update / Susulan Dokumen TOR"):
@@ -287,7 +314,6 @@ if st.session_state["role"] == "prodi":
 elif st.session_state["role"] == "admin":
     st.title("📊 Dashboard Monitoring & Review")
     
-    # --- FITUR TOGGLE SEMBUNYIKAN NILAI ANGGARAN ---
     col_info, col_toggle = st.columns([3, 1])
     with col_info:
         st.info("Gunakan tab di bawah untuk meninjau usulan dari setiap Program Studi.")
