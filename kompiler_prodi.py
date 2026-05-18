@@ -95,7 +95,7 @@ with st.sidebar:
         st.rerun()
 
 # ==========================================
-# FUNGSI CETAK LAPORAN (HTML/PDF CANGGIH)
+# FUNGSI CETAK LAPORAN (HTML/PDF CANGGIH DENGAN KOP SURAT)
 # ==========================================
 def generate_html_report(df_prodi, nama_prodi, hidden=False):
     html = f"""
@@ -104,34 +104,134 @@ def generate_html_report(df_prodi, nama_prodi, hidden=False):
     <head>
     <meta charset="utf-8">
     <style>
-        @page {{ size: A4; margin: 20mm 15mm; @bottom-right {{ content: "Halaman " counter(page) " dari " counter(pages); font-size: 9pt; color: #718096; font-family: 'Arial', sans-serif; }} }}
+        @page {{ 
+            size: A4; 
+            margin: 15mm 20mm 35mm 20mm; /* Ruang lebih besar di bawah untuk footer */
+            @bottom-center {{
+                content: element(footer);
+            }}
+        }}
         *, *::before, *::after {{ box-sizing: border-box; }}
-        body {{ font-family: 'Arial', sans-serif; color: #2d3748; line-height: 1.4; margin: 0; padding: 0; }}
-        .kop-surat {{ text-align: center; border-bottom: 3px double #1a365d; padding-bottom: 10px; margin-bottom: 20px; }}
-        .kop-surat h1 {{ font-size: 16pt; color: #1a365d; margin: 0 0 5px 0; text-transform: uppercase; font-weight: bold; }}
-        .kop-surat h2 {{ font-size: 12pt; color: #4a5568; margin: 0 0 5px 0; font-weight: normal; }}
-        .kop-surat p {{ font-size: 9pt; color: #718096; margin: 0; font-style: italic; }}
+        body {{ font-family: 'Arial', sans-serif; color: #000; line-height: 1.4; margin: 0; padding: 0; font-size: 11pt; }}
+        
+        /* HEADER - KOP SURAT */
+        .kop-surat {{ 
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-bottom: 4px solid #000; 
+            padding-bottom: 5px; 
+            margin-bottom: 20px; 
+            position: relative;
+        }}
+        .kop-logo {{
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 90px;
+        }}
+        .kop-teks {{
+            text-align: center;
+            font-family: 'Times New Roman', Times, serif;
+            flex-grow: 1;
+        }}
+        .kop-teks h1 {{ font-size: 16pt; margin: 0; font-weight: normal; }}
+        .kop-teks h2 {{ font-size: 16pt; margin: 0; font-weight: normal; text-transform: uppercase; }}
+        .kop-teks h3 {{ font-size: 18pt; margin: 0; font-weight: bold; text-transform: uppercase; }}
+        .kop-teks p {{ font-size: 11pt; margin: 2px 0 0 0; }}
+        
+        /* FOOTER SURAT */
+        div.footer-dokumen {{
+            position: running(footer);
+            width: 100%;
+            text-align: center;
+            font-family: 'Arial', sans-serif;
+            font-size: 10pt;
+            padding-top: 10px;
+        }}
+        .footer-line {{
+            border-top: 3px solid #808080;
+            margin-bottom: 5px;
+            position: relative;
+        }}
+        .blu-logo {{
+            position: absolute;
+            right: 0;
+            top: -50px;
+            width: 70px;
+        }}
+        .footer-tagline {{
+            color: #7ab2c1;
+            font-weight: bold;
+            font-size: 11pt;
+            margin-bottom: 5px;
+        }}
+        .footer-sosmed {{
+            color: #808080;
+            font-size: 10pt;
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+        }}
+        .footer-sosmed span {{
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+        }}
+        .icon-bulat {{
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            border: 1px solid #808080;
+            text-align: center;
+            line-height: 14px;
+            font-size: 10px;
+        }}
+
+        /* KONTEN LAPORAN */
         .judul-laporan {{ text-align: center; margin-bottom: 25px; }}
-        .judul-laporan h3 {{ font-size: 14pt; color: #2d3748; margin: 0 0 5px 0; text-transform: uppercase; }}
-        .badge-prodi {{ display: inline-block; background-color: #ebf8ff; color: #2b6cb0; padding: 4px 12px; border-radius: 4px; font-size: 10pt; font-weight: bold; border: 1px solid #bee3f8; }}
+        .judul-laporan h3 {{ font-size: 14pt; margin: 0 0 5px 0; text-transform: uppercase; }}
+        .badge-prodi {{ display: inline-block; background-color: #f3f4f6; color: #111827; padding: 4px 12px; border-radius: 4px; font-weight: bold; border: 1px solid #d1d5db; }}
+        
         .block-kegiatan {{ margin-bottom: 25px; page-break-inside: avoid; }}
-        .header-kegiatan {{ background-color: #1a365d; color: #ffffff; padding: 8px 12px; border-radius: 4px 4px 0 0; font-weight: bold; font-size: 11pt; }}
-        .catatan-review {{ background-color: #f7fafc; border-left: 3px solid #ecc94b; padding: 6px 12px; font-size: 9.5pt; color: #744210; margin: 0; border-bottom: 1px solid #e2e8f0; border-right: 1px solid #e2e8f0; }}
-        .tabel-rincian {{ width: 100%; border-collapse: collapse; border-left: 1px solid #e2e8f0; border-right: 1px solid #e2e8f0; border-bottom: 1px solid #e2e8f0; }}
-        .tabel-rincian th {{ background-color: #edf2f7; color: #4a5568; font-size: 9.5pt; font-weight: bold; text-align: left; padding: 8px 12px; border-bottom: 2px solid #cbd5e0; }}
-        .tabel-rincian td {{ padding: 8px 12px; font-size: 9.5pt; border-bottom: 1px solid #edf2f7; color: #4a5568; }}
-        .tabel-rincian tr:nth-child(even) td {{ background-color: #f7fafc; }}
+        .header-kegiatan {{ background-color: #f3f4f6; border: 1px solid #000; padding: 8px 12px; font-weight: bold; }}
+        .catatan-review {{ font-style: italic; color: #4b5563; font-size: 10pt; padding: 4px 12px; border-left: 1px solid #000; border-right: 1px solid #000; }}
+        
+        .tabel-rincian {{ width: 100%; border-collapse: collapse; border: 1px solid #000; }}
+        .tabel-rincian th {{ border: 1px solid #000; padding: 6px; font-weight: bold; text-align: center; background-color: #f9fafb; }}
+        .tabel-rincian td {{ border: 1px solid #000; padding: 6px; }}
         .text-right {{ text-align: right !important; }}
         .text-center {{ text-align: center !important; }}
-        .total-row td {{ font-weight: bold; background-color: #edf2f7 !important; color: #1a365d; border-top: 1px solid #cbd5e0; }}
+        .total-row td {{ font-weight: bold; background-color: #f3f4f6 !important; }}
     </style>
     </head>
     <body>
-        <div class="kop-surat">
-            <h1>Universitas Mulawarman</h1>
-            <h2>Fakultas Ilmu Budaya</h2>
-            <p>Sistem Kompiler Rencana Kerja & Anggaran (RKA)</p>
+        <div class="footer-dokumen">
+            <div class="footer-line">
+                <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/c/cd/BLU_Speed.png/1200px-BLU_Speed.png" class="blu-logo" alt="BLU Speed">
+            </div>
+            <div class="footer-tagline">Pilar Utama Penyangga Multikulturalisme di Ibu Kota Negara Nusantara</div>
+            <div class="footer-sosmed">
+                <span><i class="icon-bulat">🌐</i> http://fib.unmul.ac.id/</span>
+                <span><i class="icon-bulat">📷</i> Ilmubudaya_unmul</span>
+                <span><i class="icon-bulat">▶</i> FAKULTAS ILMUBUDAYA UNMUL</span>
+            </div>
         </div>
+
+        <div class="kop-surat">
+            <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/e/e0/Logo_Universitas_Mulawarman.svg/1200px-Logo_Universitas_Mulawarman.svg.png" class="kop-logo" alt="Logo Unmul">
+            <div class="kop-teks">
+                <h1>KEMENTERIAN PENDIDIKAN TINGGI, SAINS,</h1>
+                <h1>DAN TEKNOLOGI</h1>
+                <h2>UNIVERSITAS MULAWARMAN</h2>
+                <h3>FAKULTAS ILMU BUDAYA</h3>
+                <p>Jl. Ki Hajar Dewantara, Kampus Gunung Kelua, Samarinda 75123</p>
+                <p>Telepon (0541) 7809033</p>
+                <p>Laman http://fib.unmul.ac.id &nbsp; Surel fib@unmul.ac.id</p>
+            </div>
+        </div>
+
         <div class="judul-laporan">
             <h3>Rekapitulasi Rincian Anggaran Tahun 2026</h3>
             <span class="badge-prodi">Program Studi: {nama_prodi}</span>
@@ -155,20 +255,20 @@ def generate_html_report(df_prodi, nama_prodi, hidden=False):
             </div>
         """
         if cat != "-":
-            html += f'<div class="catatan-review"><strong>Catatan Fakultas:</strong> {cat}</div>'
+            html += f'<div class="catatan-review"><strong>Catatan Review:</strong> {cat}</div>'
             
         html += """
             <table class="tabel-rincian">
                 <thead>
                     <tr>
-                        <th style="width: 50%;">Rincian Belanja</th>
-                        <th style="width: 10%;" class="text-center">Vol</th>
-                        <th style="width: 15%;" class="text-center">Satuan</th>
+                        <th style="width: 50%; text-align: left;">Rincian Belanja</th>
+                        <th style="width: 10%;">Vol</th>
+                        <th style="width: 15%;">Satuan</th>
         """
         if not hidden:
             html += """
-                        <th style="width: 12%;" class="text-right">Harga Satuan</th>
-                        <th style="width: 13%;" class="text-right">Total</th>
+                        <th style="width: 12%; text-align: right;">Harga Satuan</th>
+                        <th style="width: 13%; text-align: right;">Total</th>
             """
         html += """
                     </tr>
@@ -192,7 +292,7 @@ def generate_html_report(df_prodi, nama_prodi, hidden=False):
         if not hidden:
             html += f"""
                     <tr class="total-row">
-                        <td colspan="4">Total Usulan Anggaran Kegiatan</td>
+                        <td colspan="4" class="text-right">Total Usulan Anggaran Kegiatan</td>
                         <td class="text-right">{tot:,.0f}</td>
                     </tr>
             """
