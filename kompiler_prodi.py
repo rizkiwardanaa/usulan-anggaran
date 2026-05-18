@@ -238,7 +238,7 @@ if st.session_state["role"] == "prodi":
                         "Tanggal_Input": pd.Timestamp.now().strftime("%Y-%m-%d %H:%M"), 
                         "Program_Studi": st.session_state["nama_user"], "Nama_Kegiatan": nama_keg,
                         "Rincian_Belanja": r["Rincian Belanja"], "Volume": r["Volume"], "Satuan": r["Satuan"],
-                        "Harga_Satuan": r["Harga Satuan"], "Total_Usulan": r["Volume"] * r["Harga Satuan"],
+                        "Harga_Satuan": r["Harga Satuan"], "Total_Usulan": r["Volume"] * r["Harga_Satuan"],
                         "Prioritas": "Sedang", "Status": "Menunggu Review", "Catatan_Fakultas": "-", "File_TOR": path_tor
                     } for _, r in valid.iterrows()])
                     
@@ -443,32 +443,41 @@ elif st.session_state["role"] == "admin":
                 else:
                     st.info("Data belum tersedia untuk analisis.")
 
-            # --- FITUR BARU: DETAIL RINCIAN PER PRODI (READ-ONLY) ---
+            # --- FITUR BARU: DETAIL RINCIAN PER PRODI DALAM BENTUK TABEL (READ-ONLY) ---
             st.markdown("---")
-            st.markdown("### 📄 Detail Rincian Usulan Per Prodi")
-            st.caption("Pilih Program Studi di bawah ini untuk melihat rincian riil setiap kegiatan sebagai bahan rekap laporan.")
+            st.markdown("### 📄 Laporan Tabel Rincian Usulan Per Prodi")
+            st.caption("Pilih Program Studi di bawah ini untuk melihat rincian riil setiap kegiatan dalam bentuk tabel utuh sebagai bahan rekap laporan.")
             
             prodi_ins_sel = st.selectbox("Pilih Program Studi:", sorted(df_usulan["Program_Studi"].unique()), key="ins_prodi_sel")
-            df_ins_p = df_usulan[df_usulan["Program_Studi"] == prodi_ins_sel]
+            df_ins_p = df_usulan[df_usulan["Program_Studi"] == prodi_ins_sel].copy()
             
             if not df_ins_p.empty:
-                rekap_ins_keg = df_ins_p.groupby("Nama_Kegiatan")["Total_Usulan"].sum().reset_index()
+                # Menyiapkan kolom untuk tabel laporan yang datar
+                df_tabel_ins = df_ins_p[["Nama_Kegiatan", "Rincian_Belanja", "Volume", "Satuan", "Harga_Satuan", "Total_Usulan", "Status", "Catatan_Fakultas"]].copy()
                 
-                for k in rekap_ins_keg["Nama_Kegiatan"]:
-                    df_ins_k = df_ins_p[df_ins_p["Nama_Kegiatan"] == k].copy()
-                    tot_ins_k = df_ins_k["Total_Usulan"].sum()
-                    stat_ins_k = df_ins_k["Status"].iloc[0]
-                    cat_ins_k = df_ins_k["Catatan_Fakultas"].iloc[0]
-                    
-                    teks_nominal_ins = "Rp ***" if sembunyikan_nilai else f"Rp {tot_ins_k:,.0f}".replace(',', '.')
-                    
-                    with st.expander(f"📌 {k.upper()} | Total: {teks_nominal_ins} | Status: {stat_ins_k}"):
-                        if cat_ins_k != "-":
-                            st.info(f"**Catatan Fakultas:** {cat_ins_k}")
-                        
-                        if sembunyikan_nilai:
-                            st.dataframe(df_ins_k[["Rincian_Belanja", "Volume", "Satuan"]], hide_index=True, use_container_width=True)
-                        else:
-                            st.dataframe(df_ins_k[["Rincian_Belanja", "Volume", "Satuan", "Harga_Satuan", "Total_Usulan"]], hide_index=True, use_container_width=True)
+                # Mengubah nama header agar lebih enak dibaca
+                df_tabel_ins.rename(columns={
+                    "Nama_Kegiatan": "Nama Kegiatan",
+                    "Rincian_Belanja": "Rincian Belanja",
+                    "Harga_Satuan": "Harga Satuan (Rp)",
+                    "Total_Usulan": "Total Usulan (Rp)",
+                    "Catatan_Fakultas": "Catatan"
+                }, inplace=True)
+                
+                # Melindungi angka jika toggle Sembunyikan Nilai diaktifkan
+                if sembunyikan_nilai:
+                    df_tabel_ins.drop(columns=["Harga Satuan (Rp)", "Total Usulan (Rp)"], inplace=True)
+                    st.dataframe(df_tabel_ins, hide_index=True, use_container_width=True)
+                else:
+                    # Menampilkan tabel lengkap dengan format mata uang
+                    st.dataframe(
+                        df_tabel_ins,
+                        hide_index=True,
+                        use_container_width=True,
+                        column_config={
+                            "Harga Satuan (Rp)": st.column_config.NumberColumn("Harga Satuan (Rp)", format="%d"),
+                            "Total Usulan (Rp)": st.column_config.NumberColumn("Total Usulan (Rp)", format="%d")
+                        }
+                    )
             else:
                 st.info(f"Belum ada data kegiatan untuk {prodi_ins_sel}.")
