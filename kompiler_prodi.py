@@ -246,7 +246,7 @@ if st.session_state["role"] == "prodi":
                         "Tanggal_Input": pd.Timestamp.now().strftime("%Y-%m-%d %H:%M"), 
                         "Program_Studi": st.session_state["nama_user"], "Nama_Kegiatan": nama_keg,
                         "Rincian_Belanja": r["Rincian Belanja"], "Volume": r["Volume"], "Satuan": r["Satuan"],
-                        "Harga_Satuan": r["Harga Satuan"], "Total_Usulan": r["Volume"] * r["Harga Satuan"],
+                        "Harga_Satuan": r["Harga Satuan"], "Total_Usulan": r["Volume"] * r["Harga_Satuan"],
                         "Prioritas": "Sedang", "Status": "Menunggu Review", "Catatan_Fakultas": "-", "File_TOR": path_tor
                     } for _, r in valid.iterrows()])
                     
@@ -380,7 +380,7 @@ elif st.session_state["role"] == "admin":
                         }), hide_index=True, use_container_width=True)
 
             st.markdown("---")
-            st.download_button("📥 Download Excel Rekapitulasi", data=df_usulan.to_csv(index=False).encode('utf-8'), file_name="Rekap_FIB_2026.csv", mime="text/csv")
+            # Tombol export lama kita sembunyikan karena sudah diganti dengan yang lebih keren di Tab Insight
 
         with tab_hapus:
             st.subheader("🗑️ Hapus Data Rincian")
@@ -454,35 +454,78 @@ elif st.session_state["role"] == "admin":
                 else:
                     st.info("Data belum tersedia untuk analisis.")
 
-            st.markdown("---")
-            st.markdown("### 📄 Laporan Tabel Rincian Usulan Per Prodi")
-            st.caption("Pilih Program Studi di bawah ini untuk melihat rincian riil setiap kegiatan dalam bentuk tabel utuh sebagai bahan rekap laporan.")
-            
-            prodi_ins_sel = st.selectbox("Pilih Program Studi:", sorted(df_usulan["Program_Studi"].unique()), key="ins_prodi_sel")
-            df_ins_p = df_usulan[df_usulan["Program_Studi"] == prodi_ins_sel].copy()
-            
-            if not df_ins_p.empty:
-                df_tabel_ins = df_ins_p[["Nama_Kegiatan", "Rincian_Belanja", "Volume", "Satuan", "Harga_Satuan", "Total_Usulan", "Status", "Catatan_Fakultas"]].copy()
+            # --- FUNGSI UNTUK MENGUBAH DATA MENJADI FORMAT HIRARKI (VISUAL LEBIH RAPI) ---
+            def format_df_ke_hirarki(df_mentah, hidden=False):
+                # Urutkan berdasarkan Prodi dan Nama Kegiatan agar sekelompok
+                df_h = df_mentah.sort_values(by=["Program_Studi", "Nama_Kegiatan"]).copy()
                 
-                df_tabel_ins.rename(columns={
+                if not hidden:
+                    df_h["Harga_Satuan"] = df_h["Harga_Satuan"].apply(lambda x: f"{x:,.0f}".replace(',', '.'))
+                    df_h["Total_Usulan"] = df_h["Total_Usulan"].apply(lambda x: f"{x:,.0f}".replace(',', '.'))
+                
+                # Cek mana baris yang kegiatannya berulang (duplikat)
+                is_duplicate = df_h.duplicated(subset=["Program_Studi", "Nama_Kegiatan"])
+                
+                # Kosongkan sel yang berulang agar terlihat seperti hirarki/grup
+                df_h.loc[is_duplicate, "Program_Studi"] = ""
+                df_h.loc[is_duplicate, "Nama_Kegiatan"] = ""
+                df_h.loc[is_duplicate, "Status"] = ""
+                df_h.loc[is_duplicate, "Catatan_Fakultas"] = ""
+                
+                # Ambil kolom yang diperlukan saja dan ganti namanya agar rapih
+                df_h = df_h[["Program_Studi", "Nama_Kegiatan", "Rincian_Belanja", "Volume", "Satuan", "Harga_Satuan", "Total_Usulan", "Status", "Catatan_Fakultas"]]
+                df_h.rename(columns={
+                    "Program_Studi": "Program Studi",
                     "Nama_Kegiatan": "Nama Kegiatan",
                     "Rincian_Belanja": "Rincian Belanja",
                     "Harga_Satuan": "Harga Satuan (Rp)",
-                    "Total_Usulan": "Total Usulan (Rp)",
-                    "Catatan_Fakultas": "Catatan"
+                    "Total_Usulan": "Total Rincian (Rp)",
+                    "Catatan_Fakultas": "Catatan Review"
                 }, inplace=True)
                 
-                if sembunyikan_nilai:
-                    df_tabel_ins.drop(columns=["Harga Satuan (Rp)", "Total Usulan (Rp)"], inplace=True)
-                    st.dataframe(df_tabel_ins, hide_index=True, use_container_width=True)
-                else:
-                    st.dataframe(
-                        df_tabel_ins.style.format({
-                            "Harga Satuan (Rp)": format_rupiah,
-                            "Total Usulan (Rp)": format_rupiah
-                        }),
-                        hide_index=True,
-                        use_container_width=True
+                if hidden:
+                    df_h.drop(columns=["Harga Satuan (Rp)", "Total Rincian (Rp)"], inplace=True)
+                    
+                return df_h
+
+            def generate_excel(df_to_save, nama_sheet):
+                output = BytesIO()
+                with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                    df_to_save.to_excel(writer, index=False, sheet_name=nama_sheet)
+                return output.getvalue()
+
+            st.markdown("---")
+            st.markdown("### 📄 Laporan Cetak Hirarki Per Prodi")
+            st.caption("Lihat dan unduh laporan yang telah dikelompokkan (Status dan Catatan hanya muncul di baris utama kegiatan agar tidak membingungkan).")
+            
+            prodi_ins_sel = st.selectbox("Pilih Program Studi:", sorted(df_usulan["Program_Studi"].unique()), key="ins_prodi_sel")
+            df_ins_p = df_usulan[df_usulan["Program_Studi"] == prodi_ins_sel]
+            
+            if not df_ins_p.empty:
+                # Konversi data ke format hirarki (kosongkan sel berulang)
+                df_hirarki_prodi = format_df_ke_hirarki(df_ins_p, hidden=sembunyikan_nilai)
+                
+                # Tampilkan di UI
+                st.dataframe(df_hirarki_prodi, hide_index=True, use_container_width=True)
+                
+                # Tombol Download EXCEL
+                col_dl1, col_dl2 = st.columns(2)
+                with col_dl1:
+                    excel_prodi = generate_excel(df_hirarki_prodi, nama_sheet=prodi_ins_sel[:30])
+                    st.download_button(
+                        label=f"📥 Download Laporan {prodi_ins_sel}", 
+                        data=excel_prodi, 
+                        file_name=f"Laporan_{prodi_ins_sel}_2026.xlsx", 
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    )
+                with col_dl2:
+                    df_hirarki_semua = format_df_ke_hirarki(df_usulan, hidden=sembunyikan_nilai)
+                    excel_semua = generate_excel(df_hirarki_semua, nama_sheet="Seluruh_Fakultas")
+                    st.download_button(
+                        label="📥 Download Laporan Seluruh Fakultas", 
+                        data=excel_semua, 
+                        file_name="Laporan_FIB_Seluruh_Prodi_2026.xlsx", 
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                     )
             else:
                 st.info(f"Belum ada data kegiatan untuk {prodi_ins_sel}.")
