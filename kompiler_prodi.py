@@ -9,7 +9,6 @@ from io import BytesIO
 # ==========================================
 st.set_page_config(page_title="Kompiler Usulan Anggaran FIB", page_icon="📝", layout="wide")
 
-# Menggunakan pencari alamat otomatis (Bisa untuk Local Windows maupun Server Cloud)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 FILE_DB = os.path.join(BASE_DIR, "database_usulan_prodi.db")
 FILE_CSV_LAMA = os.path.join(BASE_DIR, "database_usulan_prodi.csv")
@@ -51,6 +50,13 @@ def save_data(df):
     conn.close()
 
 df_usulan = load_data()
+
+# Fungsi Cerdas untuk Memberi Titik Ribuan Otomatis
+def format_rupiah(x):
+    try:
+        return f"{float(x):,.0f}".replace(',', '.')
+    except (ValueError, TypeError):
+        return x
 
 # ==========================================
 # 2. DATABASE USER
@@ -212,7 +218,9 @@ if st.session_state["role"] == "prodi":
                                 st.rerun()
                     else:
                         st.info(f"🔒 Data tidak dapat diedit/dihapus karena telah menerima keputusan Fakultas (**{status_keg}**).")
-                        st.dataframe(df_k[["Rincian_Belanja", "Volume", "Satuan", "Harga_Satuan", "Total_Usulan"]], hide_index=True, use_container_width=True)
+                        st.dataframe(df_k[["Rincian_Belanja", "Volume", "Satuan", "Harga_Satuan", "Total_Usulan"]].style.format({
+                            "Harga_Satuan": format_rupiah, "Total_Usulan": format_rupiah
+                        }), hide_index=True, use_container_width=True)
 
         else:
             st.info("Belum ada kegiatan yang diusulkan. Silakan buat usulan baru di tab 'Buat Usulan Baru'.")
@@ -238,7 +246,7 @@ if st.session_state["role"] == "prodi":
                         "Tanggal_Input": pd.Timestamp.now().strftime("%Y-%m-%d %H:%M"), 
                         "Program_Studi": st.session_state["nama_user"], "Nama_Kegiatan": nama_keg,
                         "Rincian_Belanja": r["Rincian Belanja"], "Volume": r["Volume"], "Satuan": r["Satuan"],
-                        "Harga_Satuan": r["Harga Satuan"], "Total_Usulan": r["Volume"] * r["Harga_Satuan"],
+                        "Harga_Satuan": r["Harga Satuan"], "Total_Usulan": r["Volume"] * r["Harga Satuan"],
                         "Prioritas": "Sedang", "Status": "Menunggu Review", "Catatan_Fakultas": "-", "File_TOR": path_tor
                     } for _, r in valid.iterrows()])
                     
@@ -291,7 +299,9 @@ if st.session_state["role"] == "prodi":
                     st.success("Revisi berhasil dikirim!"); st.rerun()
             else:
                 st.info(f"🔒 Data tidak dapat diedit karena status saat ini: **{status_saat_ini}**.")
-                st.table(df_curr[["Rincian_Belanja", "Volume", "Satuan", "Harga_Satuan", "Total_Usulan"]].style.format({"Total_Usulan": "{:,.0f}"}))
+                st.table(df_curr[["Rincian_Belanja", "Volume", "Satuan", "Harga_Satuan", "Total_Usulan"]].style.format({
+                    "Harga_Satuan": format_rupiah, "Total_Usulan": format_rupiah
+                }))
             
             with st.expander("📄 Update / Susulan Dokumen TOR"):
                 new_tor = st.file_uploader("Upload PDF (Maks 5MB)", type=["pdf"], key=f"up_{sel_keg}")
@@ -329,7 +339,7 @@ elif st.session_state["role"] == "admin":
                 rekap_semua["Total Usulan (Rp)"] = "Rp ***"
                 st.table(rekap_semua)
             else:
-                st.table(rekap_semua.style.format({"Total Usulan (Rp)": "{:,.0f}"}))
+                st.table(rekap_semua.style.format({"Total Usulan (Rp)": format_rupiah}))
 
             st.markdown("---")
             
@@ -365,7 +375,9 @@ elif st.session_state["role"] == "admin":
                         df_tampil = df_k[["Rincian_Belanja", "Volume", "Satuan"]].copy()
                         st.dataframe(df_tampil, hide_index=True, use_container_width=True)
                     else:
-                        st.dataframe(df_k[["Rincian_Belanja", "Volume", "Satuan", "Harga_Satuan", "Total_Usulan"]], hide_index=True, use_container_width=True)
+                        st.dataframe(df_k[["Rincian_Belanja", "Volume", "Satuan", "Harga_Satuan", "Total_Usulan"]].style.format({
+                            "Harga_Satuan": format_rupiah, "Total_Usulan": format_rupiah
+                        }), hide_index=True, use_container_width=True)
 
             st.markdown("---")
             st.download_button("📥 Download Excel Rekapitulasi", data=df_usulan.to_csv(index=False).encode('utf-8'), file_name="Rekap_FIB_2026.csv", mime="text/csv")
@@ -428,11 +440,10 @@ elif st.session_state["role"] == "admin":
                     kolom_tampil = ["Program Studi", "Jml Kegiatan", "Menunggu Review", "Disetujui", "Perlu Revisi", "Ditolak", "Total Anggaran (Rp)"]
                     
                     st.dataframe(
-                        rekap_final[kolom_tampil],
+                        rekap_final[kolom_tampil].style.format({"Total Anggaran (Rp)": format_rupiah}),
                         hide_index=True,
                         use_container_width=True,
                         column_config={
-                            "Total Anggaran (Rp)": st.column_config.NumberColumn("Total Anggaran (Rp)", format="Rp %d"),
                             "Jml Kegiatan": st.column_config.NumberColumn("Jml Kegiatan", format="%d"),
                             "Menunggu Review": st.column_config.NumberColumn("Menunggu Review", format="%d"),
                             "Disetujui": st.column_config.NumberColumn("Disetujui", format="%d"),
@@ -443,7 +454,6 @@ elif st.session_state["role"] == "admin":
                 else:
                     st.info("Data belum tersedia untuk analisis.")
 
-            # --- FITUR BARU: DETAIL RINCIAN PER PRODI DALAM BENTUK TABEL (READ-ONLY) ---
             st.markdown("---")
             st.markdown("### 📄 Laporan Tabel Rincian Usulan Per Prodi")
             st.caption("Pilih Program Studi di bawah ini untuk melihat rincian riil setiap kegiatan dalam bentuk tabel utuh sebagai bahan rekap laporan.")
@@ -452,10 +462,8 @@ elif st.session_state["role"] == "admin":
             df_ins_p = df_usulan[df_usulan["Program_Studi"] == prodi_ins_sel].copy()
             
             if not df_ins_p.empty:
-                # Menyiapkan kolom untuk tabel laporan yang datar
                 df_tabel_ins = df_ins_p[["Nama_Kegiatan", "Rincian_Belanja", "Volume", "Satuan", "Harga_Satuan", "Total_Usulan", "Status", "Catatan_Fakultas"]].copy()
                 
-                # Mengubah nama header agar lebih enak dibaca
                 df_tabel_ins.rename(columns={
                     "Nama_Kegiatan": "Nama Kegiatan",
                     "Rincian_Belanja": "Rincian Belanja",
@@ -464,20 +472,17 @@ elif st.session_state["role"] == "admin":
                     "Catatan_Fakultas": "Catatan"
                 }, inplace=True)
                 
-                # Melindungi angka jika toggle Sembunyikan Nilai diaktifkan
                 if sembunyikan_nilai:
                     df_tabel_ins.drop(columns=["Harga Satuan (Rp)", "Total Usulan (Rp)"], inplace=True)
                     st.dataframe(df_tabel_ins, hide_index=True, use_container_width=True)
                 else:
-                    # Menampilkan tabel lengkap dengan format mata uang
                     st.dataframe(
-                        df_tabel_ins,
+                        df_tabel_ins.style.format({
+                            "Harga Satuan (Rp)": format_rupiah,
+                            "Total Usulan (Rp)": format_rupiah
+                        }),
                         hide_index=True,
-                        use_container_width=True,
-                        column_config={
-                            "Harga Satuan (Rp)": st.column_config.NumberColumn("Harga Satuan (Rp)", format="%d"),
-                            "Total Usulan (Rp)": st.column_config.NumberColumn("Total Usulan (Rp)", format="%d")
-                        }
+                        use_container_width=True
                     )
             else:
                 st.info(f"Belum ada data kegiatan untuk {prodi_ins_sel}.")
