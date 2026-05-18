@@ -2,20 +2,49 @@ import streamlit as st
 import pandas as pd
 from io import BytesIO
 
+# Konfigurasi Halaman (Harus selalu ada di baris pertama)
 st.set_page_config(page_title="Pengolah Dokumen RAB", page_icon="📄", layout="wide")
 
+# ==========================================
+# 🛡️ PENGAMAN HALAMAN (SECURITY LOCK)
+# ==========================================
+# Cek apakah user sudah login
+if "logged_in" not in st.session_state or not st.session_state["logged_in"]:
+    st.warning("🔒 Sesi Anda telah berakhir atau Anda belum Login. Silakan kembali ke Halaman Utama untuk Login.")
+    st.stop() # Hentikan kode agar tidak menampilkan apapun
+
+# Cek apakah user adalah ADMIN (Hanya admin yang boleh buka halaman ini)
+if st.session_state.get("role") != "admin":
+    st.error("🚫 Akses Ditolak! Halaman ini dikhususkan untuk Administrator Fakultas Ilmu Budaya.")
+    st.stop() # Hentikan eksekusi kode
+
+# ==========================================
+# SIDEBAR
+# ==========================================
+with st.sidebar:
+    st.header("Sistem Perencanaan")
+    st.markdown(f"👤 **{st.session_state['nama_user']}**")
+    
+    st.markdown("---")
+    st.info("💡 Anda sedang berada di halaman **Pengolah Dokumen RAB**. Untuk kembali ke laporan Prodi, klik menu **'kompiler prodi'** di atas.")
+    
+    if st.button("🚪 Logout", type="primary"):
+        st.session_state.update({"logged_in": False, "role": None, "nama_user": None, "username": None})
+        st.switch_page("kompiler_prodi.py") # Tendang kembali ke halaman utama saat logout
+
+# ==========================================
+# APLIKASI PENGOLAH RAB (HANYA MUNCUL JIKA ADMIN)
+# ==========================================
 st.title("📄 Pengolah Dokumen RAB (Otomatis)")
-st.info("Aplikasi terpisah khusus untuk memproduksi file Excel RAB sesuai standar format universitas. Isi data form di bawah, lalu klik 'Buat File RAB'.")
+st.info("Aplikasi khusus untuk memproduksi file Excel resmi (RAB) sesuai standar format universitas. Isi data form di bawah, lalu klik 'Buat File RAB'.")
 
 # SECTION 1: HEADER RAB
 st.markdown("### 1. Informasi Utama RAB")
 col1, col2 = st.columns(2)
 
-# Static Data
 st.text_input("Kementerian/ Lembaga (Otomatis)", "(023) KEMENTERIAN PENDIDIKAN TINGGI, SAINS DAN TEKNOLOGI", disabled=True)
 st.text_input("Unit Eselon II/ Satker (Otomatis)", "(17) Direktorat Jenderal Pendidikan Tinggi / (677524) UNIVERSITAS MULAWARMAN", disabled=True)
 
-# Dynamic Variable Data
 rab_kegiatan = col1.text_input("Kegiatan", "(7730) PENGELOLAAN BOPTN")
 rab_sasaran = col2.text_input("Sasaran Kegiatan", "Meningkatnya Kualitas Lulusan Pendidikan Tinggi")
 rab_kro = col1.text_input("Klasifikasi Rincian Output", "(7730.CAA) Layanan Dukungan Manajemen Internal")
@@ -24,11 +53,10 @@ rab_satuan = col1.text_input("Satuan Ukur", "Layanan")
 rab_alokasi = col2.number_input("Total Alokasi Dana (Rp)", value=12000000, step=1000000)
 
 st.markdown("---")
-# SECTION 2: DETAIL BELANJA (Master Editor)
+# SECTION 2: DETAIL BELANJA
 st.markdown("### 2. Rincian Anggaran (Tabel Belanja)")
-st.caption("Masukkan rincian item, beserta klasifikasi Output, Komponen, dan Akun Belanjanya. Mesin akan otomatis mengelompokkannya ke dalam format Excel yang berjenjang.")
+st.caption("Masukkan rincian item. Mesin akan otomatis mengelompokkannya ke dalam format Excel yang berjenjang.")
 
-# Template Awal Pengisian RAB
 template_rab = pd.DataFrame([{
     "Rincian Output": "7730.CAA.001 - Layanan Perkantoran",
     "Komponen": "052.A - Penyelenggaraan Rapat Koordinasi Kurikulum",
@@ -39,7 +67,6 @@ template_rab = pd.DataFrame([{
     "Harga Satuan": 400000
 }])
 
-# Menampilkan Data Editor Interaktif
 df_rab_input = st.data_editor(
     template_rab,
     num_rows="dynamic",
@@ -56,7 +83,6 @@ df_rab_input = st.data_editor(
     }
 )
 
-# FUNGSI ENGINE PEMBUAT EXCEL RAB
 def export_excel_rab(df_items, header_data):
     import openpyxl
     from openpyxl.styles import Font, Alignment, Border, Side
@@ -107,7 +133,6 @@ def export_excel_rab(df_items, header_data):
     row_pointer += 1
     df_items['Jumlah_Biaya'] = df_items['Volume'] * df_items['Harga Satuan']
 
-    # LOGIKA GROUPING BERJENJANG
     for ro, group_ro in df_items.groupby("Rincian Output"):
         tot_ro = group_ro["Jumlah_Biaya"].sum()
         cell_ro1 = ws.cell(row=row_pointer, column=1, value=ro)
@@ -116,8 +141,7 @@ def export_excel_rab(df_items, header_data):
         ws.cell(row=row_pointer, column=3).border = border_all
         ws.cell(row=row_pointer, column=4).border = border_all
         cell_ro5 = ws.cell(row=row_pointer, column=5, value=tot_ro)
-        cell_ro5.font = font_bold; cell_ro5.border = border_all
-        cell_ro5.number_format = '#,##0'
+        cell_ro5.font = font_bold; cell_ro5.border = border_all; cell_ro5.number_format = '#,##0'
         row_pointer += 1
 
         for komp, group_komp in group_ro.groupby("Komponen"):
@@ -128,8 +152,7 @@ def export_excel_rab(df_items, header_data):
             ws.cell(row=row_pointer, column=3).border = border_all
             ws.cell(row=row_pointer, column=4).border = border_all
             cell_ko5 = ws.cell(row=row_pointer, column=5, value=tot_komp)
-            cell_ko5.font = font_bold; cell_ko5.border = border_all
-            cell_ko5.number_format = '#,##0'
+            cell_ko5.font = font_bold; cell_ko5.border = border_all; cell_ko5.number_format = '#,##0'
             row_pointer += 1
 
             for akun, group_akun in group_komp.groupby("Akun Belanja"):
@@ -140,44 +163,32 @@ def export_excel_rab(df_items, header_data):
                 ws.cell(row=row_pointer, column=3).border = border_all
                 ws.cell(row=row_pointer, column=4).border = border_all
                 cell_ak5 = ws.cell(row=row_pointer, column=5, value=tot_akun)
-                cell_ak5.font = font_bold; cell_ak5.border = border_all
-                cell_ak5.number_format = '#,##0'
+                cell_ak5.font = font_bold; cell_ak5.border = border_all; cell_ak5.number_format = '#,##0'
                 row_pointer += 1
 
                 for _, baris_data in group_akun.iterrows():
                     c_ur = ws.cell(row=row_pointer, column=1, value=f"      - {baris_data['Uraian Belanja (Barang/Jasa)']}")
                     c_ur.border = border_all
-                    
-                    c_vol = ws.cell(row=row_pointer, column=2, value=baris_data['Volume'])
-                    c_vol.alignment = align_center; c_vol.border = border_all
-                    
-                    c_sat = ws.cell(row=row_pointer, column=3, value=baris_data['Satuan'])
-                    c_sat.alignment = align_center; c_sat.border = border_all
-                    
-                    c_hrg = ws.cell(row=row_pointer, column=4, value=baris_data['Harga Satuan'])
-                    c_hrg.number_format = '#,##0'; c_hrg.border = border_all
-                    
-                    c_tot = ws.cell(row=row_pointer, column=5, value=baris_data['Jumlah_Biaya'])
-                    c_tot.number_format = '#,##0'; c_tot.border = border_all
-                    
+                    c_vol = ws.cell(row=row_pointer, column=2, value=baris_data['Volume']); c_vol.alignment = align_center; c_vol.border = border_all
+                    c_sat = ws.cell(row=row_pointer, column=3, value=baris_data['Satuan']); c_sat.alignment = align_center; c_sat.border = border_all
+                    c_hrg = ws.cell(row=row_pointer, column=4, value=baris_data['Harga Satuan']); c_hrg.number_format = '#,##0'; c_hrg.border = border_all
+                    c_tot = ws.cell(row=row_pointer, column=5, value=baris_data['Jumlah_Biaya']); c_tot.number_format = '#,##0'; c_tot.border = border_all
                     row_pointer += 1
 
     output = BytesIO()
     wb.save(output)
     return output.getvalue()
 
-# Tombol Eksekusi
 if st.button("🚀 Buat File RAB (Excel)", type="primary"):
-    valid_rab_input = df_rab_input[df_rab_input["Uraian Belanja (Barang/Jasa)"].str.strip() != ""]
-    
-    if valid_rab_input.empty:
+    valid_rab = df_rab_input[df_rab_input["Uraian Belanja (Barang/Jasa)"].str.strip() != ""]
+    if valid_rab.empty:
         st.error("Gagal! Anda belum memasukkan rincian belanja sama sekali.")
     else:
         header_metadata = {
             "kegiatan": rab_kegiatan, "sasaran": rab_sasaran, "kro": rab_kro,
             "vol": rab_vol, "satuan": rab_satuan, "alokasi": rab_alokasi
         }
-        file_excel_final = export_excel_rab(valid_rab_input, header_metadata)
+        file_excel_final = export_excel_rab(valid_rab, header_metadata)
         
         st.success("✅ File RAB Berhasil Dibuat dan Disusun Berjenjang!")
         st.download_button(
