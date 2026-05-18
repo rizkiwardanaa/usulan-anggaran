@@ -404,7 +404,6 @@ elif st.session_state["role"] == "admin":
                     rekap_ins = df_usulan.groupby("Program_Studi")["Total_Usulan"].sum().reset_index()
                     st.bar_chart(rekap_ins.set_index("Program_Studi")["Total_Usulan"])
                     
-                    # --- FITUR BARU: TABEL KLASIFIKASI RAPI PER PRODI ---
                     st.markdown("### 📑 Rekapitulasi Rinci Per Program Studi")
                     st.caption("Tabel di bawah ini merangkum total anggaran, jumlah kegiatan, dan status review untuk masing-masing Program Studi.")
                     
@@ -443,3 +442,33 @@ elif st.session_state["role"] == "admin":
                     )
                 else:
                     st.info("Data belum tersedia untuk analisis.")
+
+            # --- FITUR BARU: DETAIL RINCIAN PER PRODI (READ-ONLY) ---
+            st.markdown("---")
+            st.markdown("### 📄 Detail Rincian Usulan Per Prodi")
+            st.caption("Pilih Program Studi di bawah ini untuk melihat rincian riil setiap kegiatan sebagai bahan rekap laporan.")
+            
+            prodi_ins_sel = st.selectbox("Pilih Program Studi:", sorted(df_usulan["Program_Studi"].unique()), key="ins_prodi_sel")
+            df_ins_p = df_usulan[df_usulan["Program_Studi"] == prodi_ins_sel]
+            
+            if not df_ins_p.empty:
+                rekap_ins_keg = df_ins_p.groupby("Nama_Kegiatan")["Total_Usulan"].sum().reset_index()
+                
+                for k in rekap_ins_keg["Nama_Kegiatan"]:
+                    df_ins_k = df_ins_p[df_ins_p["Nama_Kegiatan"] == k].copy()
+                    tot_ins_k = df_ins_k["Total_Usulan"].sum()
+                    stat_ins_k = df_ins_k["Status"].iloc[0]
+                    cat_ins_k = df_ins_k["Catatan_Fakultas"].iloc[0]
+                    
+                    teks_nominal_ins = "Rp ***" if sembunyikan_nilai else f"Rp {tot_ins_k:,.0f}".replace(',', '.')
+                    
+                    with st.expander(f"📌 {k.upper()} | Total: {teks_nominal_ins} | Status: {stat_ins_k}"):
+                        if cat_ins_k != "-":
+                            st.info(f"**Catatan Fakultas:** {cat_ins_k}")
+                        
+                        if sembunyikan_nilai:
+                            st.dataframe(df_ins_k[["Rincian_Belanja", "Volume", "Satuan"]], hide_index=True, use_container_width=True)
+                        else:
+                            st.dataframe(df_ins_k[["Rincian_Belanja", "Volume", "Satuan", "Harga_Satuan", "Total_Usulan"]], hide_index=True, use_container_width=True)
+            else:
+                st.info(f"Belum ada data kegiatan untuk {prodi_ins_sel}.")
