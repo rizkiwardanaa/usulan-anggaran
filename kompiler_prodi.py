@@ -3,11 +3,12 @@ import pandas as pd
 import os
 import sqlite3
 from io import BytesIO
+from datetime import datetime
 
 # ==========================================
 # 1. KONFIGURASI HALAMAN & LOKASI DATABASE
 # ==========================================
-st.set_page_config(page_title="Kompiler Usulan Anggaran FIB", page_icon="📝", layout="wide")
+st.set_page_config(page_title="Sistem RKA FIB Unmul", page_icon="📝", layout="wide")
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 FILE_DB = os.path.join(BASE_DIR, "database_usulan_prodi.db")
@@ -17,6 +18,7 @@ UPLOAD_DIR = os.path.join(BASE_DIR, "tor_uploads")
 if not os.path.exists(UPLOAD_DIR):
     os.makedirs(UPLOAD_DIR)
 
+# --- FUNGSI DATABASE KOMPILER PRODI ---
 def load_data():
     conn = sqlite3.connect(FILE_DB)
     cek_tabel = pd.read_sql("SELECT name FROM sqlite_master WHERE type='table' AND name='usulan'", conn)
@@ -31,11 +33,7 @@ def load_data():
             conn.close()
             return df
         else:
-            df_kosong = pd.DataFrame(columns=[
-                "Tanggal_Input", "Program_Studi", "Nama_Kegiatan", 
-                "Rincian_Belanja", "Volume", "Satuan", "Harga_Satuan", 
-                "Total_Usulan", "Prioritas", "Status", "Catatan_Fakultas", "File_TOR"
-            ])
+            df_kosong = pd.DataFrame(columns=["Tanggal_Input", "Program_Studi", "Nama_Kegiatan", "Rincian_Belanja", "Volume", "Satuan", "Harga_Satuan", "Total_Usulan", "Prioritas", "Status", "Catatan_Fakultas", "File_TOR"])
             df_kosong.to_sql("usulan", conn, if_exists="replace", index=False)
             conn.close()
             return df_kosong
@@ -51,12 +49,50 @@ def save_data(df):
 
 df_usulan = load_data()
 
+# --- FUNGSI DATABASE MASTER RAB DENGAN AUTO-UPDATE KOLOM ---
+def load_table(table_name, default_cols):
+    conn = sqlite3.connect(FILE_DB)
+    try:
+        df = pd.read_sql(f"SELECT * FROM {table_name}", conn)
+        # Auto-update jika ada kolom baru agar tidak error
+        for col in default_cols:
+            if col not in df.columns:
+                if "Vol" in col or "Harga" in col or "Total" in col: df[col] = 1 if "Vol" in col else 0
+                else: df[col] = "-"
+    except:
+        df = pd.DataFrame(columns=default_cols)
+        df.to_sql(table_name, conn, index=False)
+    conn.close()
+    return df
+
+def save_table(df, table_name):
+    conn = sqlite3.connect(FILE_DB)
+    df.to_sql(table_name, conn, if_exists="replace", index=False)
+    conn.close()
+
+df_m_kro = load_table("rab_m_kro", ["KRO"])
+df_m_ro = load_table("rab_m_ro", ["KRO", "RO"])
+df_m_komp = load_table("rab_m_komp", ["RO", "Komponen"])
+df_m_subkomp = load_table("rab_m_subkomp", ["Komponen", "Sub_Komponen"])
+df_m_akun = load_table("rab_m_akun", ["Akun_Belanja"])
+df_m_pejabat = load_table("rab_m_pejabat", ["Jabatan", "Nama", "NIP"])
+
+df_rab_utama = load_table("rab_utama", ["ID_RAB", "Tanggal", "Tgl_Cetak", "KRO", "RO", "Komponen", "Sub_Komponen", "Kegiatan", "Sasaran", "Volume", "Satuan", "Alokasi", "Jabatan", "Nama_Pejabat", "NIP_Pejabat"])
+df_rab_detail = load_table("rab_detail", ["ID_RAB", "Akun_Belanja", "Uraian", "Vol_1", "Sat_1", "Vol_2", "Sat_2", "Harga_Satuan", "Total_Biaya"])
+
 def format_rupiah(x):
     try: return f"{float(x):,.0f}".replace(',', '.')
     except (ValueError, TypeError): return x
 
+def split_kode(teks):
+    s = str(teks)
+    if " - " in s:
+        parts = s.split(" - ", 1)
+        return parts[0], parts[1]
+    return "", s
+
 # ==========================================
-# 2. DATABASE USER
+# 2. DATABASE USER & LOGIN
 # ==========================================
 USER_CREDENTIALS = {
     "admin": {"password": "adminfib", "role": "admin", "nama_tampil": "Fakultas Ilmu Budaya (Admin)"},
@@ -86,17 +122,16 @@ if not st.session_state["logged_in"]:
     st.stop()
 
 # ==========================================
-# 3. SIDEBAR UTAMA & LOGIKA MENU
+# 3. SIDEBAR & MENU KHUSUS
 # ==========================================
 with st.sidebar:
     st.header("Sistem Perencanaan")
     st.markdown(f"👤 **{st.session_state['nama_user']}**")
     
-    # Menampilkan menu khusus admin saja
-    menu_pilihan = "1. Dashboard Kompiler Usulan"
+    menu_admin_terpilih = "1. Dashboard Kompiler Usulan"
     if st.session_state.get("role") == "admin":
         st.markdown("---")
-        menu_pilihan = st.radio("📍 Navigasi Admin:", ["1. Dashboard Kompiler Usulan", "2. Pengolah Dokumen RAB"])
+        menu_admin_terpilih = st.radio("📍 Navigasi Admin:", ["1. Dashboard Kompiler Usulan", "2. Pengolah Dokumen RAB"])
         st.markdown("---")
         
     if st.button("🚪 Logout", type="primary"):
@@ -104,7 +139,7 @@ with st.sidebar:
         st.rerun()
 
 # ==========================================
-# FUNGSI EXPORT DATA HTML / PDF
+# FUNGSI EXPORT DATA KOMPILER (HTML)
 # ==========================================
 def generate_html_report(df_data, nama_prodi, hidden=False):
     html = f"""
@@ -201,10 +236,7 @@ def format_df_ke_hirarki(df_mentah, hidden=False):
     df_h.loc[is_duplicate, "Catatan_Fakultas"] = ""
     
     df_h = df_h[["Program_Studi", "Nama_Kegiatan", "Rincian_Belanja", "Volume", "Satuan", "Harga_Satuan", "Total_Usulan", "Status", "Catatan_Fakultas"]]
-    df_h.rename(columns={
-        "Program_Studi": "Program Studi", "Nama_Kegiatan": "Nama Kegiatan", "Rincian_Belanja": "Rincian Belanja",
-        "Harga_Satuan": "Harga Satuan (Rp)", "Total_Usulan": "Total Rincian (Rp)", "Catatan_Fakultas": "Catatan Review"
-    }, inplace=True)
+    df_h.rename(columns={"Program_Studi": "Program Studi", "Nama_Kegiatan": "Nama Kegiatan", "Rincian_Belanja": "Rincian Belanja", "Harga_Satuan": "Harga Satuan (Rp)", "Total_Usulan": "Total Rincian (Rp)", "Catatan_Fakultas": "Catatan Review"}, inplace=True)
     if hidden: df_h.drop(columns=["Harga Satuan (Rp)", "Total Rincian (Rp)"], inplace=True)
     return df_h
 
@@ -370,25 +402,21 @@ if st.session_state["role"] == "prodi":
                         save_data(df_usulan); st.success("TOR Terupdate!"); st.rerun()
 
 # ==========================================
-# 5. TAMPILAN ADMIN (ROUTING MENU)
+# 5. TAMPILAN ADMIN (MULTIPLE DASHBOARDS)
 # ==========================================
 elif st.session_state["role"] == "admin":
     
     # ----------------------------------------------------
-    # JIKA PILIH DASHBOARD KOMPILER (APP LAMA)
+    # MENU 1: DASHBOARD KOMPILER (APP LAMA)
     # ----------------------------------------------------
-    if menu_pilihan == "1. Dashboard Kompiler Usulan":
+    if menu_admin_terpilih == "1. Dashboard Kompiler Usulan":
         st.title("📊 Dashboard Monitoring & Review")
-        
         col_info, col_toggle = st.columns([3, 1])
-        with col_info: st.info("Gunakan tab di bawah untuk meninjau usulan dari setiap Program Studi.")
-        with col_toggle: sembunyikan_nilai = st.toggle("🙈 Sembunyikan Nominal Anggaran", value=False)
+        with col_info: st.info("Tinjau usulan dari setiap Program Studi.")
+        with col_toggle: sembunyikan_nilai = st.toggle("🙈 Sembunyikan Anggaran", value=False)
         
         tab_rev, tab_hapus, tab_ins, tab_restore = st.tabs(["📋 Review & Analisis", "🗑️ Manajemen Data", "🤖 Insight", "♻️ Restore Data"])
 
-        # ---------------------------------------------
-        # TAB BARU: ♻️ RESTORE DATA (SOLUSI CEPAT)
-        # ---------------------------------------------
         with tab_restore:
             st.subheader("♻️ Restore Database dari File Cadangan")
             st.warning("Upload file **Rekap_FIB.csv** (atau file Excel Backup Anda) di bawah ini untuk mengembalikan seluruh data prodi yang hilang.")
@@ -418,9 +446,7 @@ elif st.session_state["role"] == "admin":
                 st.subheader("🏙️ Rekapitulasi Anggaran Per Prodi")
                 rekap_semua = df_usulan.groupby("Program_Studi")["Total_Usulan"].sum().reset_index()
                 rekap_semua.columns = ["Program Studi", "Total Usulan (Rp)"]
-                if sembunyikan_nilai:
-                    rekap_semua["Total Usulan (Rp)"] = "Rp ***"
-                    st.table(rekap_semua)
+                if sembunyikan_nilai: st.table(rekap_semua.assign(**{"Total Usulan (Rp)": "Rp ***"}))
                 else: st.table(rekap_semua.style.format({"Total Usulan (Rp)": format_rupiah}))
 
                 st.markdown("---")
@@ -431,7 +457,7 @@ elif st.session_state["role"] == "admin":
                 for k in rekap_keg_prodi["Nama_Kegiatan"]:
                     df_k = df_p[df_p["Nama_Kegiatan"] == k].copy()
                     total_keg_val = df_k["Total_Usulan"].sum()
-                    teks_nominal_expander = "Rp ***" if sembunyikan_nilai else f"Rp {total_keg_val:,.0f}".replace(',', '.')
+                    teks_nominal_expander = "Rp ***" if sembunyikan_nilai else f"Rp {format_rupiah(total_keg_val)}"
                     
                     with st.expander(f"📌 {k.upper()} | Total Usulan: {teks_nominal_expander} | Status: {df_k['Status'].iloc[0]}"):
                         path = df_k["File_TOR"].iloc[0]
@@ -446,7 +472,7 @@ elif st.session_state["role"] == "admin":
                             df_usulan.loc[(df_usulan["Program_Studi"]==prodi_sel) & (df_usulan["Nama_Kegiatan"]==k), ["Status", "Catatan_Fakultas"]] = [n_s, n_n]
                             save_data(df_usulan); st.success(f"Status diperbarui!"); st.rerun()
                         
-                        if sembunyikan_nilai: st.dataframe(df_k[["Rincian_Belanja", "Volume", "Satuan"]].copy(), hide_index=True, use_container_width=True)
+                        if sembunyikan_nilai: st.dataframe(df_k[["Rincian_Belanja", "Volume", "Satuan"]], hide_index=True, use_container_width=True)
                         else: st.dataframe(df_k[["Rincian_Belanja", "Volume", "Satuan", "Harga_Satuan", "Total_Usulan"]].style.format({"Harga_Satuan": format_rupiah, "Total_Usulan": format_rupiah}), hide_index=True, use_container_width=True)
 
         with tab_hapus:
@@ -465,38 +491,317 @@ elif st.session_state["role"] == "admin":
                 else:
                     tot = df_usulan['Total_Usulan'].sum()
                     if tot > 0:
-                        st.info(f"💡 **Total anggaran diajukan: Rp {format_rupiah(tot)}**")
+                        prodi_max = df_usulan.groupby('Program_Studi')['Total_Usulan'].sum().idxmax()
+                        val_max = df_usulan.groupby('Program_Studi')['Total_Usulan'].sum().max()
+                        st.info(f"💡 **Total anggaran diajukan: Rp {format_rupiah(tot)}**\n* Terbesar: {prodi_max} (Rp {format_rupiah(val_max)})")
                         st.bar_chart(df_usulan.groupby("Program_Studi")["Total_Usulan"].sum().reset_index().set_index("Program_Studi")["Total_Usulan"])
-                        status_pivot = pd.crosstab(df_usulan["Program_Studi"], df_usulan["Status"]).reset_index()
-                        rekap_detail = df_usulan.groupby("Program_Studi").agg(Total_Anggaran=("Total_Usulan", "sum"), Jumlah_Kegiatan=("Nama_Kegiatan", "nunique")).reset_index()
-                        rekap_final = pd.merge(rekap_detail, status_pivot, on="Program_Studi", how="left").fillna(0)
-                        for stat in ["Menunggu Review", "Disetujui", "Perlu Revisi", "Ditolak"]:
-                            if stat not in rekap_final.columns: rekap_final[stat] = 0
-                        rekap_final.rename(columns={"Program_Studi": "Program Studi", "Jumlah_Kegiatan": "Jml Kegiatan", "Total_Anggaran": "Total Anggaran (Rp)"}, inplace=True)
-                        st.dataframe(rekap_final[["Program Studi", "Jml Kegiatan", "Menunggu Review", "Disetujui", "Perlu Revisi", "Ditolak", "Total Anggaran (Rp)"]].style.format({"Total Anggaran (Rp)": format_rupiah}), hide_index=True, use_container_width=True)
+
+            st.markdown("---")
+            st.markdown("### 📄 Laporan Cetak Hirarki & PDF Print-Ready")
+            prodi_ins_sel = st.selectbox("Pilih Program Studi untuk dilihat:", sorted(df_usulan["Program_Studi"].unique()), key="ins_prodi_sel")
+            df_ins_p = df_usulan[df_usulan["Program_Studi"] == prodi_ins_sel]
+            
+            if not df_ins_p.empty:
+                st.dataframe(format_df_ke_hirarki(df_ins_p, hidden=sembunyikan_nilai), hide_index=True, use_container_width=True)
+                col_ex1, col_ex2 = st.columns(2)
+                with col_ex1: st.download_button("📊 Excel: Laporan Prodi", data=generate_excel(format_df_ke_hirarki(df_ins_p, hidden=sembunyikan_nilai), prodi_ins_sel[:30]), file_name=f"Laporan_{prodi_ins_sel}_2026.xlsx", use_container_width=True)
+                with col_ex2: st.download_button("📊 Excel: Laporan Fakultas", data=generate_excel(format_df_ke_hirarki(df_usulan, hidden=sembunyikan_nilai), "Seluruh_Fakultas"), file_name="Laporan_FIB_Semua_2026.xlsx", use_container_width=True)
+                
+                col_pdf1, col_pdf2 = st.columns(2)
+                with col_pdf1: st.download_button("📑 PDF: Laporan Prodi (Web)", data=generate_html_report(df_ins_p, prodi_ins_sel, hidden=sembunyikan_nilai).encode('utf-8'), file_name=f"Cetak_{prodi_ins_sel}.html", mime="text/html", use_container_width=True)
+                with col_pdf2: st.download_button("📑 PDF: Laporan Fakultas (Web)", data=generate_html_report(df_usulan, "Seluruh Fakultas", hidden=sembunyikan_nilai).encode('utf-8'), file_name="Cetak_FIB_Semua.html", mime="text/html", use_container_width=True)
+
+    # ----------------------------------------------------
+    # MENU 2: PENGOLAH RAB (APP BARU DENGAN FITUR PRO)
+    # ----------------------------------------------------
+    elif menu_admin_terpilih == "2. Pengolah Dokumen RAB":
+        st.title("📄 Pengolah Dokumen RAB Universitas")
+        st.caption("Sistem Manajemen & Generator RAB Berjenjang dengan Pemisahan Kode Otomatis.")
+
+        tab_master, tab_buat, tab_daftar = st.tabs(["🗂️ Master Database", "📝 Buat RAB Baru", "📂 Daftar RAB Tersimpan"])
+
+        with tab_master:
+            st.info("💡 Input Master Data. Format bebas, mesin otomatis memisahkan teks sebelum tanda strip '-' ke kolom Kode Excel.")
+            col_m1, col_m2 = st.columns(2)
+            with col_m1:
+                st.markdown("**1. Master KRO**")
+                edit_kro = st.data_editor(df_m_kro, num_rows="dynamic", use_container_width=True, hide_index=True)
+                if st.button("💾 Simpan KRO"): save_table(edit_kro.dropna(how='all'), "rab_m_kro"); st.rerun()
+                    
+                st.markdown("**3. Master Komponen**")
+                list_ro = df_m_ro["RO"].tolist() if not df_m_ro.empty else ["Isi Master RO Dulu"]
+                edit_komp = st.data_editor(df_m_komp, num_rows="dynamic", use_container_width=True, hide_index=True, column_config={"RO": st.column_config.SelectboxColumn("Induk RO", options=list_ro, required=True)})
+                if st.button("💾 Simpan Komponen"): save_table(edit_komp.dropna(how='all'), "rab_m_komp"); st.rerun()
+
+                st.markdown("**5. Master Akun Belanja**")
+                edit_akun = st.data_editor(df_m_akun, num_rows="dynamic", use_container_width=True, hide_index=True)
+                if st.button("💾 Simpan Akun Belanja"): save_table(edit_akun.dropna(how='all'), "rab_m_akun"); st.rerun()
+
+            with col_m2:
+                st.markdown("**2. Master RO (Rincian Output)**")
+                list_kro = df_m_kro["KRO"].tolist() if not df_m_kro.empty else ["Isi Master KRO Dulu"]
+                edit_ro = st.data_editor(df_m_ro, num_rows="dynamic", use_container_width=True, hide_index=True, column_config={"KRO": st.column_config.SelectboxColumn("Induk KRO", options=list_kro, required=True)})
+                if st.button("💾 Simpan RO"): save_table(edit_ro.dropna(how='all'), "rab_m_ro"); st.rerun()
+                
+                st.markdown("**4. Master Sub-Komponen**")
+                list_komp = df_m_komp["Komponen"].tolist() if not df_m_komp.empty else ["Isi Master Komponen Dulu"]
+                edit_subkomp = st.data_editor(df_m_subkomp, num_rows="dynamic", use_container_width=True, hide_index=True, column_config={"Komponen": st.column_config.SelectboxColumn("Induk Komponen", options=list_komp, required=True)})
+                if st.button("💾 Simpan Sub-Komponen"): save_table(edit_subkomp.dropna(how='all'), "rab_m_subkomp"); st.rerun()
+
+                st.markdown("**6. Master Pejabat (Penandatangan)**")
+                edit_pejabat = st.data_editor(df_m_pejabat, num_rows="dynamic", use_container_width=True, hide_index=True)
+                if st.button("💾 Simpan Data Pejabat"): save_table(edit_pejabat.dropna(how='all'), "rab_m_pejabat"); st.rerun()
+
+        with tab_buat:
+            if df_m_kro.empty or df_m_ro.empty or df_m_komp.empty or df_m_akun.empty:
+                st.warning("⚠️ Master Database masih kosong! Isi data di tab Master terlebih dahulu.")
+            else:
+                st.subheader("1. Klasifikasi Output RAB")
+                col_c1, col_c2 = st.columns(2)
+                pilih_kro = col_c1.selectbox("Pilih KRO", df_m_kro["KRO"].tolist())
+                opsi_ro = df_m_ro[df_m_ro["KRO"] == pilih_kro]["RO"].tolist()
+                pilih_ro = col_c2.selectbox("Pilih RO", opsi_ro if opsi_ro else ["Tidak ada RO"])
+                
+                col_c3, col_c4 = st.columns(2)
+                opsi_komp = df_m_komp[df_m_komp["RO"] == pilih_ro]["Komponen"].tolist()
+                pilih_komp = col_c3.selectbox("Pilih Komponen", opsi_komp if opsi_komp else ["Tidak ada Komponen"])
+                opsi_subkomp = df_m_subkomp[df_m_subkomp["Komponen"] == pilih_komp]["Sub_Komponen"].tolist()
+                pilih_subkomp = col_c4.selectbox("Pilih Sub-Komponen", opsi_subkomp if opsi_subkomp else ["Tidak Ada Sub-Komponen"])
 
                 st.markdown("---")
-                st.markdown("### 📄 Laporan Cetak Hirarki & PDF Print-Ready")
-                prodi_ins_sel = st.selectbox("Pilih Program Studi untuk dilihat:", sorted(df_usulan["Program_Studi"].unique()), key="ins_prodi_sel")
-                df_ins_p = df_usulan[df_usulan["Program_Studi"] == prodi_ins_sel]
-                
-                if not df_ins_p.empty:
-                    st.dataframe(format_df_ke_hirarki(df_ins_p, hidden=sembunyikan_nilai), hide_index=True, use_container_width=True)
-                    
-                    col_ex1, col_ex2 = st.columns(2)
-                    with col_ex1: st.download_button("📊 Excel: Laporan Prodi", data=generate_excel(format_df_ke_hirarki(df_ins_p, hidden=sembunyikan_nilai), prodi_ins_sel[:30]), file_name=f"Laporan_{prodi_ins_sel}.xlsx", use_container_width=True)
-                    with col_ex2: st.download_button("📊 Excel: Laporan Fakultas", data=generate_excel(format_df_ke_hirarki(df_usulan, hidden=sembunyikan_nilai), "Seluruh_Fakultas"), file_name="Laporan_FIB_Semua.xlsx", use_container_width=True)
-                    
-                    col_pdf1, col_pdf2 = st.columns(2)
-                    with col_pdf1: st.download_button("📑 PDF: Laporan Prodi (Web)", data=generate_html_report(df_ins_p, prodi_ins_sel, hidden=sembunyikan_nilai).encode('utf-8'), file_name=f"Cetak_{prodi_ins_sel}.html", mime="text/html", help="Tekan Ctrl+P di browser.", use_container_width=True)
-                    with col_pdf2: st.download_button("📑 PDF: Laporan Fakultas (Web)", data=generate_html_report(df_usulan, "Seluruh Fakultas", hidden=sembunyikan_nilai).encode('utf-8'), file_name="Cetak_FIB_Semua.html", mime="text/html", help="Tekan Ctrl+P di browser.", use_container_width=True)
+                st.subheader("2. Informasi Utama Kegiatan")
+                col_u1, col_u2 = st.columns(2)
+                rab_kegiatan = col_u1.text_input("Nama Kegiatan", placeholder="Contoh: (7730) PENGELOLAAN BOPTN")
+                rab_sasaran = col_u2.text_input("Sasaran Kegiatan", placeholder="Contoh: Meningkatnya Kualitas Lulusan...")
+                rab_vol = col_u1.number_input("Volume Target", value=1, min_value=1)
+                rab_satuan = col_u2.text_input("Satuan Ukur", placeholder="Contoh: Layanan / Dokumen")
+                rab_alokasi = st.number_input("Total Pagu / Alokasi Dana (Rp)", value=0, step=1000000)
 
-    # ----------------------------------------------------
-    # JIKA ADMIN MEMILIH MENU PENGOLAH RAB (APP BARU)
-    # ----------------------------------------------------
-    elif menu_pilihan == "2. Pengolah Dokumen RAB":
-        try:
-            import aplikasi_rab
-            aplikasi_rab.jalankan_app()
-        except ModuleNotFoundError:
-            st.error("🚨 File `aplikasi_rab.py` belum ditemukan! Pastikan Anda sudah membuat file tersebut di folder utama (sejajar dengan kompiler_prodi.py).")
+                st.markdown("---")
+                st.subheader("3. Rincian Belanja (Pengali Volume & Satuan)")
+                st.caption("Jika tidak ada pengali, biarkan Vol 2 = 1 dan Satuan 2 kosong/strip (-).")
+                
+                opsi_akun = df_m_akun["Akun_Belanja"].tolist()
+                template_detail = pd.DataFrame([{"Akun Belanja": opsi_akun[0] if opsi_akun else "", "Uraian Belanja": "", "Vol 1": 1, "Sat 1": "Paket", "Vol 2": 1, "Sat 2": "-", "Harga Satuan": 0}])
+                
+                df_input_detail = st.data_editor(
+                    template_detail, num_rows="dynamic", use_container_width=True, hide_index=True,
+                    column_config={
+                        "Akun Belanja": st.column_config.SelectboxColumn("Akun Belanja", options=opsi_akun, required=True),
+                        "Uraian Belanja": st.column_config.TextColumn("Detail / Uraian", required=True),
+                        "Vol 1": st.column_config.NumberColumn("Vol 1", min_value=1, required=True),
+                        "Sat 1": st.column_config.TextColumn("Sat 1", required=True),
+                        "Vol 2": st.column_config.NumberColumn("Vol 2", min_value=1, required=True),
+                        "Sat 2": st.column_config.TextColumn("Sat 2"),
+                        "Harga Satuan": st.column_config.NumberColumn("Harga Satuan (Rp)", min_value=0, required=True)
+                    }
+                )
+
+                st.markdown("---")
+                st.subheader("4. Pengesahan (Penandatangan Dokumen)")
+                col_p1, col_p2 = st.columns(2)
+                opsi_pejabat = {idx: f"{row['Jabatan']} - {row['Nama']}" for idx, row in df_m_pejabat.iterrows()}
+                pilih_pejabat = col_p1.selectbox("Pilih Pejabat Penandatangan", options=list(opsi_pejabat.keys()), format_func=lambda x: opsi_pejabat[x]) if opsi_pejabat else None
+                tgl_cetak = col_p2.date_input("Tanggal Dokumen Cetak")
+                
+                if st.button("💾 Simpan & Terbitkan RAB", type="primary"):
+                    valid_detail = df_input_detail[df_input_detail["Uraian Belanja"].str.strip() != ""]
+                    if not rab_kegiatan or valid_detail.empty or pilih_pejabat is None:
+                        st.error("Gagal! Pastikan Kegiatan, Rincian, dan Master Pejabat sudah terisi.")
+                    else:
+                        id_rab_baru = f"RAB-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+                        tgl_sekarang = datetime.now().strftime('%Y-%m-%d %H:%M')
+                        dt_pjb = df_m_pejabat.loc[pilih_pejabat]
+                        
+                        new_utama = pd.DataFrame([{
+                            "ID_RAB": id_rab_baru, "Tanggal": tgl_sekarang, "Tgl_Cetak": str(tgl_cetak),
+                            "KRO": pilih_kro, "RO": pilih_ro, "Komponen": pilih_komp, "Sub_Komponen": pilih_subkomp,
+                            "Kegiatan": rab_kegiatan, "Sasaran": rab_sasaran, "Volume": rab_vol, "Satuan": rab_satuan, "Alokasi": rab_alokasi,
+                            "Jabatan": dt_pjb['Jabatan'], "Nama_Pejabat": dt_pjb['Nama'], "NIP_Pejabat": dt_pjb['NIP']
+                        }])
+                        df_rab_utama = pd.concat([df_rab_utama, new_utama], ignore_index=True)
+                        save_table(df_rab_utama, "rab_utama")
+                        
+                        valid_detail["ID_RAB"] = id_rab_baru
+                        valid_detail["Total_Biaya"] = valid_detail["Vol 1"] * valid_detail["Vol 2"] * valid_detail["Harga Satuan"]
+                        valid_detail.rename(columns={"Akun Belanja": "Akun_Belanja", "Uraian Belanja": "Uraian", "Vol 1":"Vol_1", "Sat 1":"Sat_1", "Vol 2":"Vol_2", "Sat 2":"Sat_2", "Harga Satuan": "Harga_Satuan"}, inplace=True)
+                        
+                        df_rab_detail = pd.concat([df_rab_detail, valid_detail[["ID_RAB", "Akun_Belanja", "Uraian", "Vol_1", "Sat_1", "Vol_2", "Sat_2", "Harga_Satuan", "Total_Biaya"]]], ignore_index=True)
+                        save_table(df_rab_detail, "rab_detail")
+                        st.success(f"✅ RAB '{rab_kegiatan}' Disimpan!"); st.rerun()
+
+        with tab_daftar:
+            if df_rab_utama.empty: st.info("Belum ada dokumen RAB yang tersimpan.")
+            else:
+                st.subheader("Arsip Dokumen RAB")
+                opsi_arsip = {row['ID_RAB']: f"[{row['Tanggal']}] {row['Kegiatan']}" for _, row in df_rab_utama.iterrows()}
+                pilih_arsip = st.selectbox("Pilih RAB yang ingin dilihat/diunduh:", options=list(opsi_arsip.keys()), format_func=lambda x: opsi_arsip[x])
+                
+                head_terpilih = df_rab_utama[df_rab_utama["ID_RAB"] == pilih_arsip]
+                detail_terpilih = df_rab_detail[df_rab_detail["ID_RAB"] == pilih_arsip]
+                
+                def get_vol_sat_str(v1, s1, v2, s2):
+                    if pd.notna(v2) and float(v2) > 1 and pd.notna(s2) and str(s2).strip() not in ["", "-"]:
+                        return f"{v1} x {v2}", f"{s1} x {s2}"
+                    return f"{v1}", f"{s1}"
+
+                # Tampilan Web
+                df_view = detail_terpilih.copy()
+                df_view['Volume String'] = df_view.apply(lambda r: get_vol_sat_str(r['Vol_1'], r['Sat_1'], r['Vol_2'], r['Sat_2'])[0], axis=1)
+                df_view['Satuan String'] = df_view.apply(lambda r: get_vol_sat_str(r['Vol_1'], r['Sat_1'], r['Vol_2'], r['Sat_2'])[1], axis=1)
+                
+                st.dataframe(df_view[["Akun_Belanja", "Uraian", "Volume String", "Satuan String", "Harga_Satuan", "Total_Biaya"]].style.format({"Harga_Satuan": format_rupiah, "Total_Biaya": format_rupiah}), hide_index=True, use_container_width=True)
+                
+                # --- MESIN CETAK EXCEL ---
+                def export_excel_rab(df_header, df_items):
+                    import openpyxl
+                    from openpyxl.styles import Font, Alignment, Border, Side
+                    wb = openpyxl.Workbook(); ws = wb.active; ws.title = "RAB Export"
+                    
+                    ws.column_dimensions['A'].width = 18 # Kode
+                    ws.column_dimensions['B'].width = 50 # Uraian
+                    ws.column_dimensions['C'].width = 15 # Volume
+                    ws.column_dimensions['D'].width = 15 # Satuan
+                    ws.column_dimensions['E'].width = 18 # Harga Satuan
+                    ws.column_dimensions['F'].width = 18 # Jumlah Biaya
+
+                    font_bold = Font(bold=True); font_header = Font(bold=True, size=12); align_center = Alignment(horizontal="center", vertical="center")
+                    border_all = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
+
+                    ws.merge_cells('A1:F1')
+                    ws['A1'] = "RINCIAN ANGGARAN BIAYA (RAB) FAKULTAS ILMU BUDAYA\nTAHUN ANGGARAN 2027"
+                    ws['A1'].alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+                    ws['A1'].font = font_header
+                    ws.row_dimensions[1].height = 40
+
+                    meta_rows = [
+                        ("Kementerian/ Lembaga:", "(023) KEMENTERIAN PENDIDIKAN TINGGI, SAINS DAN TEKNOLOGI"), ("Unit Eselon II/ Satker:", "(17) Dirjen Diktiristek / (677524) UNIVERSITAS MULAWARMAN"),
+                        ("Kegiatan:", df_header['Kegiatan'].iloc[0]), ("Sasaran Kegiatan:", df_header['Sasaran'].iloc[0]), ("Klasifikasi Rincian Output:", df_header['KRO'].iloc[0]),
+                        ("Volume:", df_header['Volume'].iloc[0]), ("Satuan Ukur:", df_header['Satuan'].iloc[0]), ("Alokasi Dana:", f"Rp. {df_header['Alokasi'].iloc[0]:,.0f}".replace(',','.'))
+                    ]
+                    rp = 2
+                    for label, val in meta_rows:
+                        ws.cell(row=rp, column=1, value=label).font = font_bold
+                        ws.cell(row=rp, column=2, value=val)
+                        ws.merge_cells(start_row=rp, start_column=2, end_row=rp, end_column=6)
+                        rp += 1
+
+                    rp += 1
+                    for col_idx, text in enumerate(["Kode", "Rincian Belanja", "Volume", "Satuan", "Harga Satuan", "Jumlah Biaya"], start=1):
+                        cell = ws.cell(row=rp, column=col_idx, value=text); cell.font = font_bold; cell.alignment = align_center; cell.border = border_all
+                    rp += 1
+
+                    total_seluruh = df_items["Total_Biaya"].sum()
+                    
+                    # Hierarchy Print
+                    for head_col, indent in [('RO', ""), ('Komponen', "  "), ('Sub_Komponen', "    ")]:
+                        if df_header[head_col].iloc[0] and df_header[head_col].iloc[0] != "Tidak Ada Sub-Komponen":
+                            kode_h, ur_h = split_kode(df_header[head_col].iloc[0])
+                            ws.cell(row=rp, column=1, value=kode_h).border = border_all; ws.cell(row=rp, column=1).font = font_bold
+                            ws.cell(row=rp, column=2, value=f"{indent}{ur_h}").border = border_all; ws.cell(row=rp, column=2).font = font_bold
+                            ws.cell(row=rp, column=3).border = border_all; ws.cell(row=rp, column=4).border = border_all; ws.cell(row=rp, column=5).border = border_all
+                            c_htot = ws.cell(row=rp, column=6, value=total_seluruh); c_htot.font = font_bold; c_htot.border = border_all; c_htot.number_format = '#,##0'
+                            rp += 1
+
+                    for akun, group_akun in df_items.groupby("Akun_Belanja"):
+                        tot_akun = group_akun["Total_Biaya"].sum()
+                        k_ak, u_ak = split_kode(akun)
+                        ws.cell(row=rp, column=1, value=k_ak).border = border_all; ws.cell(row=rp, column=1).font = font_bold
+                        ws.cell(row=rp, column=2, value=f"      {u_ak}").border = border_all; ws.cell(row=rp, column=2).font = font_bold
+                        ws.cell(row=rp, column=3).border = border_all; ws.cell(row=rp, column=4).border = border_all; ws.cell(row=rp, column=5).border = border_all
+                        c_akt = ws.cell(row=rp, column=6, value=tot_akun); c_akt.font = font_bold; c_akt.border = border_all; c_akt.number_format = '#,##0'
+                        rp += 1
+                        
+                        for _, r in group_akun.iterrows():
+                            v_str, s_str = get_vol_sat_str(r['Vol_1'], r['Sat_1'], r['Vol_2'], r['Sat_2'])
+                            ws.cell(row=rp, column=1, value="").border = border_all
+                            ws.cell(row=rp, column=2, value=f"        - {r['Uraian']}").border = border_all
+                            c_vol = ws.cell(row=rp, column=3, value=v_str); c_vol.alignment = align_center; c_vol.border = border_all
+                            c_sat = ws.cell(row=rp, column=4, value=s_str); c_sat.alignment = align_center; c_sat.border = border_all
+                            c_hrg = ws.cell(row=rp, column=5, value=r['Harga_Satuan']); c_hrg.number_format = '#,##0'; c_hrg.border = border_all
+                            c_tot = ws.cell(row=rp, column=6, value=r['Total_Biaya']); c_tot.number_format = '#,##0'; c_tot.border = border_all
+                            rp += 1
+                            
+                    # Blok Tanda Tangan
+                    rp += 2
+                    bulan_indo = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"]
+                    try: 
+                        tobj = datetime.strptime(df_header['Tgl_Cetak'].iloc[0], "%Y-%m-%d")
+                        tgl_str = f"Samarinda, {tobj.day} {bulan_indo[tobj.month-1]} {tobj.year}"
+                    except: tgl_str = f"Samarinda, {df_header['Tgl_Cetak'].iloc[0]}"
+                    
+                    ws.cell(row=rp, column=5, value=tgl_str)
+                    ws.cell(row=rp+1, column=5, value=df_header['Jabatan'].iloc[0])
+                    ws.cell(row=rp+5, column=5, value=df_header['Nama_Pejabat'].iloc[0]).font = Font(underline="single", bold=True)
+                    ws.cell(row=rp+6, column=5, value=f"NIP {df_header['NIP_Pejabat'].iloc[0]}")
+
+                    output = BytesIO(); wb.save(output)
+                    return output.getvalue()
+
+                # --- MESIN CETAK PDF ---
+                def export_pdf_rab(df_header, df_items):
+                    total_seluruh = df_items["Total_Biaya"].sum()
+                    try: 
+                        tobj = datetime.strptime(df_header['Tgl_Cetak'].iloc[0], "%Y-%m-%d")
+                        bulan_indo = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"]
+                        tgl_str = f"Samarinda, {tobj.day} {bulan_indo[tobj.month-1]} {tobj.year}"
+                    except: tgl_str = f"Samarinda, {df_header['Tgl_Cetak'].iloc[0]}"
+                    
+                    html = f"""
+                    <!DOCTYPE html>
+                    <html><head><meta charset="utf-8">
+                    <style>
+                        @page {{ size: A4 landscape; margin: 15mm; }}
+                        body {{ font-family: 'Arial', sans-serif; font-size: 10pt; }}
+                        .judul {{ text-align: center; font-weight: bold; font-size: 12pt; margin-bottom: 20px; }}
+                        .tabel-meta td {{ padding: 2px 5px; }}
+                        .tabel-utama {{ width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 9.5pt; }}
+                        .tabel-utama th, .tabel-utama td {{ border: 1px solid black; padding: 6px; }}
+                        .tabel-utama th {{ background-color: #f2f2f2; text-align: center; }}
+                        .text-right {{ text-align: right; }} .text-center {{ text-align: center; }} .bold {{ font-weight: bold; }}
+                        .ttd-box {{ width: 250px; float: right; text-align: left; margin-top: 30px; margin-right: 20px; page-break-inside: avoid; }}
+                    </style></head><body>
+                    <div class="judul">RINCIAN ANGGARAN BIAYA (RAB) FAKULTAS ILMU BUDAYA<br>TAHUN ANGGARAN 2027</div>
+                    <table class="tabel-meta">
+                        <tr><td class="bold">Kementerian/ Lembaga</td><td>:</td><td>(023) KEMENTERIAN PENDIDIKAN TINGGI, SAINS DAN TEKNOLOGI</td></tr>
+                        <tr><td class="bold">Unit Eselon II/ Satker</td><td>:</td><td>(17) Dirjen Diktiristek / (677524) UNIVERSITAS MULAWARMAN</td></tr>
+                        <tr><td class="bold">Kegiatan</td><td>:</td><td>{df_header['Kegiatan'].iloc[0]}</td></tr>
+                        <tr><td class="bold">Sasaran Kegiatan</td><td>:</td><td>{df_header['Sasaran'].iloc[0]}</td></tr>
+                        <tr><td class="bold">Klasifikasi Rincian Output</td><td>:</td><td>{df_header['KRO'].iloc[0]}</td></tr>
+                        <tr><td class="bold">Volume</td><td>:</td><td>{df_header['Volume'].iloc[0]}</td></tr>
+                        <tr><td class="bold">Satuan Ukur</td><td>:</td><td>{df_header['Satuan'].iloc[0]}</td></tr>
+                        <tr><td class="bold">Alokasi Dana</td><td>:</td><td>Rp. {format_rupiah(df_header['Alokasi'].iloc[0])}</td></tr>
+                    </table>
+                    <table class="tabel-utama">
+                        <tr><th>Kode</th><th>Rincian Belanja</th><th>Volume</th><th>Satuan</th><th>Harga Satuan</th><th>Jumlah Biaya</th></tr>
+                    """
+                    for head_col, indent in [('RO', ""), ('Komponen', "&nbsp;&nbsp;"), ('Sub_Komponen', "&nbsp;&nbsp;&nbsp;&nbsp;")]:
+                        if df_header[head_col].iloc[0] and df_header[head_col].iloc[0] != "Tidak Ada Sub-Komponen":
+                            k, u = split_kode(df_header[head_col].iloc[0])
+                            html += f"<tr><td class='bold'>{k}</td><td class='bold'>{indent}{u}</td><td></td><td></td><td></td><td class='bold text-right'>{format_rupiah(total_seluruh)}</td></tr>"
+                    
+                    for akun, group_akun in df_items.groupby("Akun_Belanja"):
+                        k_ak, u_ak = split_kode(akun)
+                        html += f"<tr><td class='bold'>{k_ak}</td><td class='bold'>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{u_ak}</td><td></td><td></td><td></td><td class='bold text-right'>{format_rupiah(group_akun['Total_Biaya'].sum())}</td></tr>"
+                        for _, r in group_akun.iterrows():
+                            v_str, s_str = get_vol_sat_str(r['Vol_1'], r['Sat_1'], r['Vol_2'], r['Sat_2'])
+                            html += f"<tr><td></td><td>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;- {r['Uraian']}</td><td class='text-center'>{v_str}</td><td class='text-center'>{s_str}</td><td class='text-right'>{format_rupiah(r['Harga_Satuan'])}</td><td class='text-right'>{format_rupiah(r['Total_Biaya'])}</td></tr>"
+                    
+                    html += f"""</table>
+                    <div class="ttd-box">
+                        {tgl_str}<br>{df_header['Jabatan'].iloc[0]}<br><br><br><br><br>
+                        <b><u>{df_header['Nama_Pejabat'].iloc[0]}</u></b><br>NIP {df_header['NIP_Pejabat'].iloc[0]}
+                    </div>
+                    </body></html>"""
+                    return html
+
+                col_x1, col_x2 = st.columns([1, 4])
+                with col_x1:
+                    st.download_button("📥 Excel: Laporan RAB Resmi", data=export_excel_rab(head_terpilih, detail_terpilih), file_name=f"RAB_2027_{pilih_arsip}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", type="primary")
+                    st.download_button("📑 PDF: Cetak RAB (Web)", data=export_pdf_rab(head_terpilih, detail_terpilih).encode('utf-8'), file_name=f"Cetak_RAB_{pilih_arsip}.html", mime="text/html", help="Tekan Ctrl+P di browser.")
+                with col_x2:
+                    if st.button("🗑️ Hapus Dokumen Ini"):
+                        df_rab_utama = df_rab_utama[df_rab_utama["ID_RAB"] != pilih_arsip]
+                        df_rab_detail = df_rab_detail[df_rab_detail["ID_RAB"] != pilih_arsip]
+                        save_table(df_rab_utama, "rab_utama"); save_table(df_rab_detail, "rab_detail")
+                        st.success("Terhapus!"); st.rerun()
