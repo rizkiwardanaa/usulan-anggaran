@@ -73,7 +73,7 @@ df_m_kro = load_table("rab_m_kro", ["KRO"])
 df_m_ro = load_table("rab_m_ro", ["KRO", "RO"])
 df_m_komp = load_table("rab_m_komp", ["RO", "Komponen"])
 df_m_subkomp = load_table("rab_m_subkomp", ["Komponen", "Sub_Komponen"])
-df_m_akun = load_table("rab_m_akun", ["Account_Code", "Account_Name"]) # Kolom standar terpisah
+df_m_akun = load_table("rab_m_akun", ["Account_Code", "Account_Name"])
 df_m_pejabat = load_table("rab_m_pejabat", ["Jabatan", "Nama", "NIP"])
 
 df_rab_utama = load_table("rab_utama", ["ID_RAB", "Tanggal", "Tgl_Cetak", "KRO", "RO", "Komponen", "Sub_Komponen", "Kegiatan", "Sasaran", "Volume", "Satuan", "Alokasi", "Jabatan", "Nama_Pejabat", "NIP_Pejabat"])
@@ -491,7 +491,7 @@ elif st.session_state["role"] == "admin":
                 sel_h = st.selectbox("Pilih data rincian belanja:", options=list(opsi_hapus.keys()), format_func=lambda x: opsi_hapus[x])
                 if st.button("🚨 Hapus Permanen", type="primary"):
                     df_usulan = df_usulan.drop(index=sel_h).reset_index(drop=True)
-                    save_data(df_usulan); st.success("Data berhasil dihapus!"); st.rerun()
+                    save_data(df_usulan); st.success("Dihapus!"); st.rerun()
 
         with tab_ins:
             st.subheader("🤖 Analisis & Insight Pintar")
@@ -519,17 +519,17 @@ elif st.session_state["role"] == "admin":
                     st.dataframe(format_df_ke_hirarki(df_ins_p, hidden=sembunyikan_nilai), hide_index=True, use_container_width=True)
                     
                     col_ex1, col_ex2 = st.columns(2)
-                    with col_ex1: st.download_button("📊 Excel: Laporan Prodi", data=generate_excel(format_df_ke_hirarki(df_ins_p, hidden=sembunyikan_nilai), prodi_ins_sel[:30]), file_name=f"Laporan_{prodi_ins_sel}.xlsx", use_container_width=True)
+                    with col_ex1: st.download_button("📊 Excel: Laporan Prodi", data=generate_excel(format_df_ke_hirarki(df_ins_p, hidden=sembunyikan_nilai), prodi_ins_sel[:30]), file_name=f"Laporan_{prodi_ins_sel}_2026.xlsx", use_container_width=True)
                     with col_ex2: st.download_button("📊 Excel: Laporan Fakultas", data=generate_excel(format_df_ke_hirarki(df_usulan, hidden=sembunyikan_nilai), "Seluruh_Fakultas"), file_name="Laporan_FIB_Semua_2026.xlsx", use_container_width=True)
                     
                     col_pdf1, col_pdf2 = st.columns(2)
-                    with col_pdf1: st.download_button("📑 PDF: Laporan Prodi (Web)", data=generate_html_report(df_ins_p, prodi_ins_sel, hidden=sembunyikan_nilai).encode('utf-8'), file_name=f"Cetak_{prodi_ins_sel}.html", mime="text/html", use_container_width=True)
-                    with col_pdf2: st.download_button("📑 PDF: Laporan Fakultas (Web)", data=generate_html_report(df_usulan, "Seluruh Fakultas", hidden=sembunyikan_nilai).encode('utf-8'), file_name="Cetak_FIB_Semua.html", mime="text/html", use_container_width=True)
+                    with col_pdf1: st.download_button("📑 PDF: Laporan Prodi (Web)", data=generate_html_report(df_ins_p, prodi_ins_sel, hidden=sembunyikan_nilai).encode('utf-8'), file_name=f"Cetak_{prodi_ins_sel}.html", mime="text/html", help="Tekan Ctrl+P di browser.", use_container_width=True)
+                    with col_pdf2: st.download_button("📑 PDF: Laporan Fakultas (Web)", data=generate_html_report(df_usulan, "Seluruh Fakultas", hidden=sembunyikan_nilai).encode('utf-8'), file_name="Cetak_FIB_Semua.html", mime="text/html", help="Tekan Ctrl+P di browser.", use_container_width=True)
 
     # ----------------------------------------------------
     # MENU 2: PENGOLAH RAB (PEMBARUAN KODE & PAGU OTOMATIS)
     # ----------------------------------------------------
-    elif menu_admin_terpilih == "2. Pengolah Dokumen RAB":
+    elif menu_pilihan == "2. Pengolah Dokumen RAB":
         st.title("📄 Pengolah Dokumen RAB Universitas")
         st.caption("Sistem Manajemen & Generator RAB Berjenjang dengan Pemisahan Kode Otomatis.")
 
@@ -739,11 +739,13 @@ elif st.session_state["role"] == "admin":
                                 # Pecah Baris Komponen Murni
                                 ws.cell(row=rp, column=1, value=k1).border = border_all; ws.cell(row=rp, column=1).font = font_bold
                                 ws.cell(row=rp, column=2, value=f"{indent}{ur_h}").border = border_all; ws.cell(row=rp, column=2).font = font_bold
+                                ws.cell(row=rp, column=3).border = border_all; ws.cell(row=rp, column=4).border = border_all; ws.cell(row=rp, column=5).border = border_all
                                 ws.cell(row=rp, column=6, value=total_seluruh).font = font_bold; ws.cell(row=rp, column=6).border = border_all; ws.cell(row=rp, column=6).number_format = '#,##0'
                                 rp += 1
                                 # Pecah Baris Sub-Komponen Murni
                                 ws.cell(row=rp, column=1, value=k2).border = border_all; ws.cell(row=rp, column=1).font = font_bold
                                 ws.cell(row=rp, column=2, value=f"{indent}  Subkomponen {k2}").border = border_all; ws.cell(row=rp, column=2).font = font_bold
+                                ws.cell(row=rp, column=3).border = border_all; ws.cell(row=rp, column=4).border = border_all; ws.cell(row=rp, column=5).border = border_all
                                 ws.cell(row=rp, column=6, value=total_seluruh).font = font_bold; ws.cell(row=rp, column=6).border = border_all; ws.cell(row=rp, column=6).number_format = '#,##0'
                                 rp += 1
                             else:
