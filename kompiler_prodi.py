@@ -77,7 +77,6 @@ df_m_subkomp = load_table("rab_m_subkomp", ["Komponen", "Sub_Komponen"])
 df_m_akun = load_table("rab_m_akun", ["Account_Code", "Account_Name"]) 
 df_m_pejabat = load_table("rab_m_pejabat", ["Jabatan", "Nama", "NIP"])
 
-# PEMBARUAN: TAMBAH KOLOM TAHUN KE DATABASE UTAMA RAB
 df_rab_utama = load_table("rab_utama", ["ID_RAB", "Tanggal", "Tahun", "Tgl_Cetak", "KRO", "RO", "Komponen", "Sub_Komponen", "Kegiatan", "Sasaran", "Volume", "Satuan", "Alokasi", "Jabatan", "Nama_Pejabat", "NIP_Pejabat"])
 df_rab_detail = load_table("rab_detail", ["ID_RAB", "Akun_Belanja", "Uraian", "Vol_1", "Sat_1", "Vol_2", "Sat_2", "Harga_Satuan", "Total_Biaya"])
 
@@ -536,7 +535,7 @@ elif st.session_state["role"] == "admin":
                     with col_pdf2: st.download_button("📑 PDF: Laporan Fakultas (Web)", data=generate_html_report(df_usulan, "Seluruh Fakultas", hidden=sembunyikan_nilai).encode('utf-8'), file_name="Cetak_FIB_Semua.html", mime="text/html", help="Tekan Ctrl+P di browser.", use_container_width=True)
 
     # ----------------------------------------------------
-    # MENU 2: PENGOLAH RAB (FIT TO PAGE & TAHUN DINAMIS)
+    # MENU 2: PENGOLAH RAB
     # ----------------------------------------------------
     elif menu_pilihan == "2. Pengolah Dokumen RAB":
         st.title("📄 Pengolah Dokumen RAB Universitas")
@@ -605,7 +604,6 @@ elif st.session_state["role"] == "admin":
                 rab_vol = col_u1.number_input("Volume Target", value=1, min_value=1)
                 rab_satuan = col_u2.text_input("Satuan Ukur", placeholder="Contoh: Layanan / Bulan")
                 
-                # PEMBARUAN: INPUT TAHUN ANGGARAN DINAMIS
                 rab_tahun = col_u1.text_input("Tahun Anggaran", value="2027")
 
                 st.markdown("---")
@@ -685,6 +683,10 @@ elif st.session_state["role"] == "admin":
                 head_terpilih = df_rab_utama[df_rab_utama["ID_RAB"] == pilih_arsip]
                 detail_terpilih = df_rab_detail[df_rab_detail["ID_RAB"] == pilih_arsip]
                 
+                # Mendapatkan nilai tahun
+                tahun_rab = head_terpilih.get('Tahun', pd.Series(['2027'])).iloc[0]
+                if tahun_rab == "-": tahun_rab = "2027"
+
                 df_view = detail_terpilih.copy()
                 df_view['Kode Akun'] = df_view['Akun_Belanja'].apply(lambda x: split_kode(x)[0])
                 df_view['Nama Akun Belanja'] = df_view['Akun_Belanja'].apply(lambda x: split_kode(x)[1])
@@ -707,7 +709,6 @@ elif st.session_state["role"] == "admin":
                     ws.column_dimensions['D'].width = 16 # Harga
                     ws.column_dimensions['E'].width = 16 # Total
                     
-                    # Set Print Properties agar Fit to 1 Page
                     ws.sheet_properties.pageSetUpPr.fitToPage = True
                     ws.page_setup.fitToHeight = 1
                     ws.page_setup.fitToWidth = 1
@@ -716,10 +717,10 @@ elif st.session_state["role"] == "admin":
                     border_all = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
 
                     ws.merge_cells('A1:E1')
-                    tahun_rab = df_header.get('Tahun', pd.Series(['2027'])).iloc[0]
-                    if tahun_rab == "-": tahun_rab = "2027"
+                    t_rab = df_header.get('Tahun', pd.Series(['2027'])).iloc[0]
+                    if t_rab == "-": t_rab = "2027"
                     
-                    ws['A1'] = f"RINCIAN ANGGARAN BIAYA (RAB) FAKULTAS ILMU BUDAYA\nTAHUN ANGGARAN {tahun_rab}"
+                    ws['A1'] = f"RINCIAN ANGGARAN BIAYA (RAB) FAKULTAS ILMU BUDAYA\nTAHUN ANGGARAN {t_rab}"
                     ws['A1'].alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
                     ws['A1'].font = font_header
                     ws.row_dimensions[1].height = 40
@@ -805,8 +806,8 @@ elif st.session_state["role"] == "admin":
                 # --- MESIN CETAK PDF (AUTO-SCALE 1 PAGE) ---
                 def export_pdf_rab(df_header, df_items):
                     total_seluruh = df_items["Total_Biaya"].sum()
-                    tahun_rab = df_header.get('Tahun', pd.Series(['2027'])).iloc[0]
-                    if tahun_rab == "-": tahun_rab = "2027"
+                    t_rab = df_header.get('Tahun', pd.Series(['2027'])).iloc[0]
+                    if t_rab == "-": t_rab = "2027"
                     
                     try: 
                         tobj = datetime.strptime(df_header['Tgl_Cetak'].iloc[0], "%Y-%m-%d")
@@ -828,7 +829,7 @@ elif st.session_state["role"] == "admin":
                         .text-right {{ text-align: right; }} .text-center {{ text-align: center; }} .bold {{ font-weight: bold; }}
                         .ttd-box {{ width: 220px; float: right; text-align: left; margin-top: 20px; margin-right: 15px; page-break-inside: avoid; }}
                     </style></head><body>
-                    <div class="judul">RINCIAN ANGGARAN BIAYA (RAB) FAKULTAS ILMU BUDAYA<br>TAHUN ANGGARAN {tahun_rab}</div>
+                    <div class="judul">RINCIAN ANGGARAN BIAYA (RAB) FAKULTAS ILMU BUDAYA<br>TAHUN ANGGARAN {t_rab}</div>
                     <table class="tabel-meta">
                         <tr><td class="bold">Kementerian/ Lembaga</td><td>:</td><td>(023) KEMENTERIAN PENDIDIKAN TINGGI, SAINS DAN TEKNOLOGI</td></tr>
                         <tr><td class="bold">Unit Eselon II/ Satker</td><td>:</td><td>(17) Dirjen Diktiristek / (677524) UNIVERSITAS MULAWARMAN</td></tr>
@@ -842,22 +843,22 @@ elif st.session_state["role"] == "admin":
                     <table class="tabel-utama">
                         <tr><th>Kode</th><th>Rincian Belanja</th><th>Volume & Satuan</th><th>Harga Satuan</th><th>Jumlah Biaya</th></tr>
                     """
-                    for head_col, indent in [('RO', ""), ('Komponen', "  "), ('Sub_Komponen', "    ")]:
+                    for head_col, indent in [('RO', ""), ('Komponen', "  "), ('Sub_Komponen', "    ")]:
                         if df_header[head_col].iloc[0] and str(df_header[head_col].iloc[0]).strip() not in ["", "-", "Tidak Ada Sub-Komponen"]:
                             k, u = split_kode(df_header[head_col].iloc[0])
                             if "." in k and len(k.split(".")) == 2 and len(k.split(".")[0]) == 3:
                                 k1, k2 = k.split(".")
                                 html += f"<tr><td class='bold'>{k1}</td><td class='bold'>{indent}{u}</td><td></td><td></td><td class='bold text-right'>{format_rupiah(total_seluruh)}</td></tr>"
-                                html += f"<tr><td class='bold'>{k2}</td><td class='bold'>{indent}  Subkomponen {k2}</td><td></td><td></td><td class='bold text-right'>{format_rupiah(total_seluruh)}</td></tr>"
+                                html += f"<tr><td class='bold'>{k2}</td><td class='bold'>{indent}  Subkomponen {k2}</td><td></td><td></td><td class='bold text-right'>{format_rupiah(total_seluruh)}</td></tr>"
                             else:
                                 html += f"<tr><td class='bold'>{k}</td><td class='bold'>{indent}{u}</td><td></td><td></td><td class='bold text-right'>{format_rupiah(total_seluruh)}</td></tr>"
                     
                     for akun, group_akun in df_items.groupby("Akun_Belanja"):
                         k_ak, u_ak = split_kode(akun)
-                        html += f"<tr><td class='bold'>{k_ak}</td><td class='bold'>      {u_ak}</td><td></td><td></td><td class='bold text-right'>{format_rupiah(group_akun['Total_Biaya'].sum())}</td></tr>"
+                        html += f"<tr><td class='bold'>{k_ak}</td><td class='bold'>      {u_ak}</td><td></td><td></td><td class='bold text-right'>{format_rupiah(group_akun['Total_Biaya'].sum())}</td></tr>"
                         for _, r in group_akun.iterrows():
                             v_sat_str = get_vol_sat_combined(r['Vol_1'], r['Sat_1'], r['Vol_2'], r['Sat_2'])
-                            html += f"<tr><td></td><td>        - {r['Uraian']}</td><td class='text-center'>{v_sat_str}</td><td class='text-right'>{format_rupiah(r['Harga_Satuan'])}</td><td class='text-right'>{format_rupiah(r['Total_Biaya'])}</td></tr>"
+                            html += f"<tr><td></td><td>        - {r['Uraian']}</td><td class='text-center'>{v_sat_str}</td><td class='text-right'>{format_rupiah(r['Harga_Satuan'])}</td><td class='text-right'>{format_rupiah(r['Total_Biaya'])}</td></tr>"
                     
                     html += f"""</table>
                     <div class="ttd-box">
@@ -870,7 +871,7 @@ elif st.session_state["role"] == "admin":
                 col_x1, col_x2 = st.columns([1, 4])
                 with col_x1:
                     st.download_button("📥 Download Excel Resmi", data=export_excel_rab(head_terpilih, detail_terpilih), file_name=f"RAB_{tahun_rab}_{pilih_arsip}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", type="primary")
-                    st.download_button("📑 PDF: Cetak RAB (Web)", data=export_pdf_rab(head_terpilih, detail_terpilih).encode('utf-8'), file_name=f"Cetak_RAB_{pilih_arsip}.html", mime="text/html", help="Tekan Ctrl+P di browser lalu pilih opsi 'Fit to Page' atau turunkan Custom Scale.")
+                    st.download_button("📑 PDF: Cetak RAB (Web)", data=export_pdf_rab(head_terpilih, detail_terpilih).encode('utf-8'), file_name=f"Cetak_RAB_{tahun_rab}_{pilih_arsip}.html", mime="text/html", help="Tekan Ctrl+P di browser lalu pilih opsi 'Fit to Page' atau turunkan Custom Scale.")
                 with col_x2:
                     if st.button("🗑️ Hapus Dokumen Ini"):
                         df_rab_utama = df_rab_utama[df_rab_utama["ID_RAB"] != pilih_arsip]
