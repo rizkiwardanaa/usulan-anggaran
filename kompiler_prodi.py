@@ -535,7 +535,7 @@ elif st.session_state["role"] == "admin":
                     with col_pdf2: st.download_button("📑 PDF: Laporan Fakultas (Web)", data=generate_html_report(df_usulan, "Seluruh Fakultas", hidden=sembunyikan_nilai).encode('utf-8'), file_name="Cetak_FIB_Semua.html", mime="text/html", help="Tekan Ctrl+P di browser.", use_container_width=True)
 
     # ----------------------------------------------------
-    # MENU 2: PENGOLAH RAB
+    # MENU 2: PENGOLAH RAB (FIT TO PAGE, TAHUN DINAMIS, CLEAN VIEW & LANDSCAPE PDF)
     # ----------------------------------------------------
     elif menu_pilihan == "2. Pengolah Dokumen RAB":
         st.title("📄 Pengolah Dokumen RAB Universitas")
@@ -683,7 +683,6 @@ elif st.session_state["role"] == "admin":
                 head_terpilih = df_rab_utama[df_rab_utama["ID_RAB"] == pilih_arsip]
                 detail_terpilih = df_rab_detail[df_rab_detail["ID_RAB"] == pilih_arsip]
                 
-                # Mendapatkan nilai tahun
                 tahun_rab = head_terpilih.get('Tahun', pd.Series(['2027'])).iloc[0]
                 if tahun_rab == "-": tahun_rab = "2027"
 
@@ -697,7 +696,7 @@ elif st.session_state["role"] == "admin":
                 
                 st.dataframe(df_view[["Kode Akun", "Nama Akun Belanja", "Uraian", "Volume & Satuan", "Harga_Satuan", "Total_Biaya"]].style.format({"Harga_Satuan": format_rupiah, "Total_Biaya": format_rupiah}), hide_index=True, use_container_width=True)
                 
-                # --- MESIN CETAK EXCEL (FIT TO 1 PAGE) ---
+                # --- MESIN CETAK EXCEL (FIT TO 1 PAGE, CLEAN TEXT) ---
                 def export_excel_rab(df_header, df_items):
                     import openpyxl
                     from openpyxl.styles import Font, Alignment, Border, Side
@@ -759,7 +758,7 @@ elif st.session_state["role"] == "admin":
                                 ws.cell(row=rp, column=5, value=total_seluruh).font = font_bold; ws.cell(row=rp, column=5).border = border_all; ws.cell(row=rp, column=5).number_format = '#,##0'
                                 rp += 1
                                 ws.cell(row=rp, column=1, value=k2).border = border_all; ws.cell(row=rp, column=1).font = font_bold
-                                ws.cell(row=rp, column=2, value=f"{indent}  Subkomponen {k2}").border = border_all; ws.cell(row=rp, column=2).font = font_bold
+                                ws.cell(row=rp, column=2, value=f"{indent}").border = border_all; ws.cell(row=rp, column=2).font = font_bold
                                 ws.cell(row=rp, column=3).border = border_all; ws.cell(row=rp, column=4).border = border_all
                                 ws.cell(row=rp, column=5, value=total_seluruh).font = font_bold; ws.cell(row=rp, column=5).border = border_all; ws.cell(row=rp, column=5).number_format = '#,##0'
                                 rp += 1
@@ -803,8 +802,8 @@ elif st.session_state["role"] == "admin":
                     output = BytesIO(); wb.save(output)
                     return output.getvalue()
 
-                # --- MESIN CETAK PDF (AUTO-SCALE 1 PAGE) ---
-                def export_pdf_rab(df_header, df_items):
+                # --- MESIN CETAK PDF (AUTO-SCALE LANDSCAPE/PORTRAIT, CLEAN TEXT) ---
+                def export_pdf_rab(df_header, df_items, orientasi):
                     total_seluruh = df_items["Total_Biaya"].sum()
                     t_rab = df_header.get('Tahun', pd.Series(['2027'])).iloc[0]
                     if t_rab == "-": t_rab = "2027"
@@ -815,11 +814,13 @@ elif st.session_state["role"] == "admin":
                         tgl_str = f"Samarinda, {tobj.day} {bulan_indo[tobj.month-1]} {tobj.year}"
                     except: tgl_str = f"Samarinda, {df_header['Tgl_Cetak'].iloc[0]}"
                     
+                    page_rule = "A4 landscape" if orientasi == "Landscape" else "A4 portrait"
+                    
                     html = f"""
                     <!DOCTYPE html>
                     <html><head><meta charset="utf-8">
                     <style>
-                        @page {{ size: A4 portrait; margin: 10mm; }}
+                        @page {{ size: {page_rule}; margin: 10mm; }}
                         body {{ font-family: 'Arial', sans-serif; font-size: 8.5pt; line-height: 1.2; }}
                         .judul {{ text-align: center; font-weight: bold; font-size: 11pt; margin-bottom: 15px; }}
                         .tabel-meta td {{ padding: 1px 3px; font-size: 8.5pt; }}
@@ -849,7 +850,7 @@ elif st.session_state["role"] == "admin":
                             if "." in k and len(k.split(".")) == 2 and len(k.split(".")[0]) == 3:
                                 k1, k2 = k.split(".")
                                 html += f"<tr><td class='bold'>{k1}</td><td class='bold'>{indent}{u}</td><td></td><td></td><td class='bold text-right'>{format_rupiah(total_seluruh)}</td></tr>"
-                                html += f"<tr><td class='bold'>{k2}</td><td class='bold'>{indent}  Subkomponen {k2}</td><td></td><td></td><td class='bold text-right'>{format_rupiah(total_seluruh)}</td></tr>"
+                                html += f"<tr><td class='bold'>{k2}</td><td class='bold'>{indent}</td><td></td><td></td><td class='bold text-right'>{format_rupiah(total_seluruh)}</td></tr>"
                             else:
                                 html += f"<tr><td class='bold'>{k}</td><td class='bold'>{indent}{u}</td><td></td><td></td><td class='bold text-right'>{format_rupiah(total_seluruh)}</td></tr>"
                     
@@ -868,10 +869,13 @@ elif st.session_state["role"] == "admin":
                     </body></html>"""
                     return html
 
+                st.markdown("#### 🖨️ Cetak & Unduh Dokumen RAB")
+                orientasi_pdf = st.radio("Pilih Orientasi PDF:", ["Landscape", "Portrait"], horizontal=True)
+
                 col_x1, col_x2 = st.columns([1, 4])
                 with col_x1:
                     st.download_button("📥 Download Excel Resmi", data=export_excel_rab(head_terpilih, detail_terpilih), file_name=f"RAB_{tahun_rab}_{pilih_arsip}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", type="primary")
-                    st.download_button("📑 PDF: Cetak RAB (Web)", data=export_pdf_rab(head_terpilih, detail_terpilih).encode('utf-8'), file_name=f"Cetak_RAB_{tahun_rab}_{pilih_arsip}.html", mime="text/html", help="Tekan Ctrl+P di browser lalu pilih opsi 'Fit to Page' atau turunkan Custom Scale.")
+                    st.download_button("📑 PDF: Cetak RAB (Web)", data=export_pdf_rab(head_terpilih, detail_terpilih, orientasi_pdf).encode('utf-8'), file_name=f"Cetak_RAB_{tahun_rab}_{pilih_arsip}.html", mime="text/html", help="Tekan Ctrl+P di browser lalu pilih opsi 'Fit to Page'.")
                 with col_x2:
                     if st.button("🗑️ Hapus Dokumen Ini"):
                         df_rab_utama = df_rab_utama[df_rab_utama["ID_RAB"] != pilih_arsip]
