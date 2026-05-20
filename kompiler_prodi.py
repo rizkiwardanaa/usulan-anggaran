@@ -535,7 +535,7 @@ elif st.session_state["role"] == "admin":
                     with col_pdf2: st.download_button("📑 PDF: Laporan Fakultas (Web)", data=generate_html_report(df_usulan, "Seluruh Fakultas", hidden=sembunyikan_nilai).encode('utf-8'), file_name="Cetak_FIB_Semua.html", mime="text/html", help="Tekan Ctrl+P di browser.", use_container_width=True)
 
     # ----------------------------------------------------
-    # MENU 2: PENGOLAH RAB (FIT TO PAGE, TAHUN DINAMIS, CLEAN VIEW & LANDSCAPE PDF)
+    # MENU 2: PENGOLAH RAB (FINAL COMPACT VIEW + AUTO RESTORE)
     # ----------------------------------------------------
     elif menu_pilihan == "2. Pengolah Dokumen RAB":
         st.title("📄 Pengolah Dokumen RAB Universitas")
@@ -545,6 +545,103 @@ elif st.session_state["role"] == "admin":
 
         with tab_master:
             st.info("💡 Input Master Data. Format bebas, mesin otomatis memisahkan teks sebelum tanda strip '-' ke kolom Kode Excel.")
+            
+            with st.expander("⚡ Restore Database Master FIB (Otomatis)", expanded=True):
+                st.warning("Klik tombol di bawah ini untuk memulihkan seluruh data standar KRO, RO, Komponen, dan 50+ Akun Belanja FIB jika data Anda hilang akibat server restart.")
+                if st.button("🚀 Restore Data Standar FIB", type="primary"):
+                    df_kro_baru = pd.DataFrame({"KRO": ["7729.BEI - Bantuan Lembaga", "7730.CAA - Sarana Bidang Pendidikan", "7730.CBJ - Prasarana Bidang Pendidikan Tinggi", "7730.DBA - Pendidikan Tinggi"]})
+                    save_table(df_kro_baru, "rab_m_kro")
+                    
+                    df_ro_baru = pd.DataFrame([
+                        {"KRO": "7729.BEI - Bantuan Lembaga", "RO": "7729.BEI.001 - PT Penerima Bantuan Dukungan Operasional"},
+                        {"KRO": "7729.BEI - Bantuan Lembaga", "RO": "7729.BEI.002 - PT Penerima Bantuan Pembelajaran"},
+                        {"KRO": "7729.BEI - Bantuan Lembaga", "RO": "7729.BEI.004 - PT Penerima Bantuan Sarana dan Prasarana Pembelajaran"},
+                        {"KRO": "7730.CAA - Sarana Bidang Pendidikan", "RO": "7730.CAA.001 - Sarana Pendukung Pembelajaran"},
+                        {"KRO": "7730.CAA - Sarana Bidang Pendidikan", "RO": "7730.CAA.002 - Sarana Pendukung Perkantoran"},
+                        {"KRO": "7730.CBJ - Prasarana Bidang Pendidikan Tinggi", "RO": "7730.CBJ.001 - Prasarana Pendukung Pembelajaran"},
+                        {"KRO": "7730.CBJ - Prasarana Bidang Pendidikan Tinggi", "RO": "7730.CBJ.002 - Prasarana Pendukung Perkantoran"},
+                        {"KRO": "7730.DBA - Pendidikan Tinggi", "RO": "7730.DBA.001 - Layanan Pendidikan"},
+                        {"KRO": "7730.DBA - Pendidikan Tinggi", "RO": "7730.DBA.002 - Dukungan Operasional Pembelajaran"},
+                        {"KRO": "7730.DBA - Pendidikan Tinggi", "RO": "7730.DBA.003 - Penelitian dan Pengabdian Masyarakat"},
+                        {"KRO": "7730.DBA - Pendidikan Tinggi", "RO": "7730.DBA.004 - Pengabdian Kepada Masyarakat"}
+                    ])
+                    save_table(df_ro_baru, "rab_m_ro")
+                    
+                    df_komp_baru = pd.DataFrame([
+                        {"RO": "7729.BEI.001 - PT Penerima Bantuan Dukungan Operasional", "Komponen": "004 - Dukungan Operasional Penyelenggaraan Pendidikan"},
+                        {"RO": "7729.BEI.002 - PT Penerima Bantuan Pembelajaran", "Komponen": "004 - Dukungan Operasional Penyelenggaraan Pendidikan"},
+                        {"RO": "7729.BEI.004 - PT Penerima Bantuan Sarana dan Prasarana Pembelajaran", "Komponen": "004 - Dukungan Operasional Penyelenggaraan Pendidikan"},
+                        {"RO": "7730.CAA.001 - Sarana Pendukung Pembelajaran", "Komponen": "051 - Pengadaan Sarana Pendukung Pembelajaran"},
+                        {"RO": "7730.CAA.002 - Sarana Pendukung Perkantoran", "Komponen": "051 - Sarana Pendukung Perkantoran"},
+                        {"RO": "7730.CBJ.001 - Prasarana Pendukung Pembelajaran", "Komponen": "051 - Pengadaan Prasarana Pendukung Pembelajaran"},
+                        {"RO": "7730.CBJ.002 - Prasarana Pendukung Perkantoran", "Komponen": "051 - Pengadaan Prasarana Pendukung Perkantoran"},
+                        {"RO": "7730.DBA.001 - Layanan Pendidikan", "Komponen": "051 - Pemeliharaan Sarana dan Prasarana Pembelajaran"},
+                        {"RO": "7730.DBA.001 - Layanan Pendidikan", "Komponen": "052 - Pemeliharaan Sarana dan Prasarana Perkantoran"},
+                        {"RO": "7730.DBA.001 - Layanan Pendidikan", "Komponen": "053 - Penyelenggaraan Layanan Pendidikan Perguruan Tinggi"},
+                        {"RO": "7730.DBA.002 - Dukungan Operasional Pembelajaran", "Komponen": "051 - Penyelenggaraan Dukungan Operasional Pembelajaran"},
+                        {"RO": "7730.DBA.002 - Dukungan Operasional Pembelajaran", "Komponen": "053 - Pelaksanaan Layanan Pengembangan Sistem Tata Kelola"},
+                        {"RO": "7730.DBA.003 - Penelitian dan Pengabdian Masyarakat", "Komponen": "051 - Penelitian"},
+                        {"RO": "7730.DBA.003 - Penelitian dan Pengabdian Masyarakat", "Komponen": "052 - Pengabdian Kepada Masyarakat"}
+                    ])
+                    save_table(df_komp_baru, "rab_m_komp")
+                    
+                    df_akun_baru = pd.DataFrame([
+                        {"Account_Code": "521111", "Account_Name": "Belanja Keperluan Perkantoran"},
+                        {"Account_Code": "521115", "Account_Name": "Belanja Honor Operasional Satuan Kerja"},
+                        {"Account_Code": "521119", "Account_Name": "Belanja Barang Operasional Lainnya"},
+                        {"Account_Code": "521211", "Account_Name": "Belanja Bahan"},
+                        {"Account_Code": "521219", "Account_Name": "Belanja Barang Non Operasional Lainnya"},
+                        {"Account_Code": "521253", "Account_Name": "Belanja Gedung dan Bangunan Ekstrakomptabel"},
+                        {"Account_Code": "522111", "Account_Name": "Belanja Langganan Listrik"},
+                        {"Account_Code": "522112", "Account_Name": "Belanja Langganan Telepon"},
+                        {"Account_Code": "522113", "Account_Name": "Belanja Langganan Air"},
+                        {"Account_Code": "522119", "Account_Name": "Belanja Langganan Daya dan Jasa Lainnya"},
+                        {"Account_Code": "522121", "Account_Name": "Belanja Jasa Pos dan Giro"},
+                        {"Account_Code": "522131", "Account_Name": "Belanja Jasa Konsultan"},
+                        {"Account_Code": "522141", "Account_Name": "Belanja Sewa"},
+                        {"Account_Code": "522151", "Account_Name": "Belanja Jasa Profesi"},
+                        {"Account_Code": "523119", "Account_Name": "Belanja Biaya Pemeliharaan Gedung Lainnya"},
+                        {"Account_Code": "523121", "Account_Name": "Belanja Biaya Pemeliharaan Peralatan dan Mesin"},
+                        {"Account_Code": "523129", "Account_Name": "Belanja Biaya Pemeliharaan Peralatan Lainnya"},
+                        {"Account_Code": "523131", "Account_Name": "Belanja Biaya Pemeliharaan Gedung dan Bangunan"},
+                        {"Account_Code": "523132", "Account_Name": "Belanja Biaya Pemeliharaan Irigasi"},
+                        {"Account_Code": "523133", "Account_Name": "Belanja Biaya Pemeliharaan Jaringan"},
+                        {"Account_Code": "523199", "Account_Name": "Belanja Biaya Pemeliharaan Lainnya"},
+                        {"Account_Code": "524111", "Account_Name": "Belanja Perjalanan Dinas Biasa"},
+                        {"Account_Code": "524114", "Account_Name": "Belanja Perjalanan Dinas Paket Meeting Dalam Kota"},
+                        {"Account_Code": "524119", "Account_Name": "Belanja Perjalanan Dinas Paket Luar Kota"},
+                        {"Account_Code": "524211", "Account_Name": "Belanja Perjalanan Biasa - Luar Negeri"},
+                        {"Account_Code": "525111", "Account_Name": "Belanja Gaji dan Tunjangan"},
+                        {"Account_Code": "525112", "Account_Name": "Belanja Barang"},
+                        {"Account_Code": "525113", "Account_Name": "Belanja Jasa"},
+                        {"Account_Code": "525114", "Account_Name": "Belanja Pemeliharaan"},
+                        {"Account_Code": "525115", "Account_Name": "Belanja Perjalanan Dinas"},
+                        {"Account_Code": "525119", "Account_Name": "Belanja Penyediaan Barang dan Jasa Lainnya"},
+                        {"Account_Code": "525162", "Account_Name": "Belanja Peralatan dan Mesin Ekstrakomptabel BLU"},
+                        {"Account_Code": "525163", "Account_Name": "Belanja Gedung dan Bangunan - Ekstrakomptabel BLU"},
+                        {"Account_Code": "532111", "Account_Name": "Belanja Modal Peralatan dan Mesin"},
+                        {"Account_Code": "532114", "Account_Name": "Belanja Modal Sewa Peralatan dan Mesin"},
+                        {"Account_Code": "532121", "Account_Name": "Belanja Penambahan Nilai Peralatan dan Mesin"},
+                        {"Account_Code": "533114", "Account_Name": "Belanja Modal Sewa Peralatan Gedung"},
+                        {"Account_Code": "533115", "Account_Name": "Belanja Modal Perencanaan Gedung"},
+                        {"Account_Code": "533116", "Account_Name": "Belanja Modal Perizinan Gedung"},
+                        {"Account_Code": "533117", "Account_Name": "Belanja Modal Pengosongan Bangunan"},
+                        {"Account_Code": "533121", "Account_Name": "Belanja Penambahan Nilai Gedung"},
+                        {"Account_Code": "534111", "Account_Name": "Belanja Modal Jalan dan Jembatan"},
+                        {"Account_Code": "534112", "Account_Name": "Belanja Modal Bahan Baku Jalan"},
+                        {"Account_Code": "534115", "Account_Name": "Belanja Modal Perencanaan Jalan"},
+                        {"Account_Code": "534121", "Account_Name": "Belanja Modal Irigasi"},
+                        {"Account_Code": "534125", "Account_Name": "Belanja Modal Perencanaan Irigasi"},
+                        {"Account_Code": "534131", "Account_Name": "Belanja Modal Jaringan"},
+                        {"Account_Code": "537112", "Account_Name": "Belanja Modal Peralatan dan Mesin - BLU"},
+                        {"Account_Code": "537113", "Account_Name": "Belanja Modal Gedung dan Bangunan - BLU"},
+                        {"Account_Code": "537114", "Account_Name": "Belanja Modal Jalan, Irigasi dan Jaringan - BLU"},
+                        {"Account_Code": "537115", "Account_Name": "Belanja Modal Lainnya - BLU"},
+                        {"Account_Code": "543122", "Account_Name": "Belanja Modal Bahan Baku Irigasi"}
+                    ])
+                    save_table(df_akun_baru, "rab_m_akun")
+                    st.success("🎉 BOOM! Seluruh Data Master FIB berhasil dipulihkan secara otomatis!"); st.rerun()
+
             col_m1, col_m2 = st.columns(2)
             with col_m1:
                 st.markdown("**1. Master KRO**")
@@ -696,7 +793,7 @@ elif st.session_state["role"] == "admin":
                 
                 st.dataframe(df_view[["Kode Akun", "Nama Akun Belanja", "Uraian", "Volume & Satuan", "Harga_Satuan", "Total_Biaya"]].style.format({"Harga_Satuan": format_rupiah, "Total_Biaya": format_rupiah}), hide_index=True, use_container_width=True)
                 
-                # --- MESIN CETAK EXCEL (FIT TO 1 PAGE, CLEAN TEXT) ---
+                # --- MESIN CETAK EXCEL (FIT TO 1 PAGE, COMPACT ROWS) ---
                 def export_excel_rab(df_header, df_items):
                     import openpyxl
                     from openpyxl.styles import Font, Alignment, Border, Side
@@ -744,48 +841,38 @@ elif st.session_state["role"] == "admin":
                         cell = ws.cell(row=rp, column=col_idx, value=text); cell.font = font_bold; cell.alignment = align_center; cell.border = border_all
                     rp += 1
 
+                    # PRINT HIRARKI PADAT (TANPA BARIS KOSONG)
+                    def print_row(kode, urai, vol, hrg, tot, is_bold=False):
+                        nonlocal rp
+                        ws.cell(row=rp, column=1, value=kode).border = border_all
+                        ws.cell(row=rp, column=2, value=urai).border = border_all
+                        ws.cell(row=rp, column=3, value=vol).border = border_all
+                        ws.cell(row=rp, column=4, value=hrg).border = border_all
+                        if hrg != "": ws.cell(row=rp, column=4).number_format = '#,##0'
+                        ws.cell(row=rp, column=5, value=tot).border = border_all; ws.cell(row=rp, column=5).number_format = '#,##0'
+                        if is_bold: 
+                            for col in range(1,6): ws.cell(row=rp, column=col).font = Font(bold=True)
+                        rp += 1
+
                     total_seluruh = df_items["Total_Biaya"].sum()
                     
                     for head_col, indent in [('RO', ""), ('Komponen', "  "), ('Sub_Komponen', "    ")]:
                         if df_header[head_col].iloc[0] and str(df_header[head_col].iloc[0]).strip() not in ["", "-", "Tidak Ada Sub-Komponen"]:
-                            kode_h, ur_h = split_kode(df_header[head_col].iloc[0])
+                            k_val, u_val = split_kode(df_header[head_col].iloc[0])
                             
-                            if "." in kode_h and len(kode_h.split(".")) == 2 and len(kode_h.split(".")[0]) == 3:
-                                k1, k2 = kode_h.split(".")
-                                ws.cell(row=rp, column=1, value=k1).border = border_all; ws.cell(row=rp, column=1).font = font_bold
-                                ws.cell(row=rp, column=2, value=f"{indent}{ur_h}").border = border_all; ws.cell(row=rp, column=2).font = font_bold
-                                ws.cell(row=rp, column=3).border = border_all; ws.cell(row=rp, column=4).border = border_all
-                                ws.cell(row=rp, column=5, value=total_seluruh).font = font_bold; ws.cell(row=rp, column=5).border = border_all; ws.cell(row=rp, column=5).number_format = '#,##0'
-                                rp += 1
-                                ws.cell(row=rp, column=1, value=k2).border = border_all; ws.cell(row=rp, column=1).font = font_bold
-                                ws.cell(row=rp, column=2, value=f"{indent}").border = border_all; ws.cell(row=rp, column=2).font = font_bold
-                                ws.cell(row=rp, column=3).border = border_all; ws.cell(row=rp, column=4).border = border_all
-                                ws.cell(row=rp, column=5, value=total_seluruh).font = font_bold; ws.cell(row=rp, column=5).border = border_all; ws.cell(row=rp, column=5).number_format = '#,##0'
-                                rp += 1
+                            if "." in k_val and len(k_val.split(".")) == 2 and len(k_val.split(".")[0]) == 3:
+                                k1, k2 = k_val.split(".")
+                                print_row(k1, f"{indent}{u_val}", "", "", total_seluruh, True)
+                                print_row(k2, f"{indent}", "", "", total_seluruh, True)
                             else:
-                                ws.cell(row=rp, column=1, value=kode_h).border = border_all; ws.cell(row=rp, column=1).font = font_bold
-                                ws.cell(row=rp, column=2, value=f"{indent}{ur_h}").border = border_all; ws.cell(row=rp, column=2).font = font_bold
-                                ws.cell(row=rp, column=3).border = border_all; ws.cell(row=rp, column=4).border = border_all
-                                c_htot = ws.cell(row=rp, column=5, value=total_seluruh); c_htot.font = font_bold; c_htot.border = border_all; c_htot.number_format = '#,##0'
-                                rp += 1
+                                print_row(k_val, f"{indent}{u_val}", "", "", total_seluruh, True)
 
-                    for akun, group_akun in df_items.groupby("Akun_Belanja"):
-                        tot_akun = group_akun["Total_Biaya"].sum()
+                    for akun, group in df_items.groupby("Akun_Belanja"):
                         k_ak, u_ak = split_kode(akun)
-                        ws.cell(row=rp, column=1, value=k_ak).border = border_all; ws.cell(row=rp, column=1).font = font_bold
-                        ws.cell(row=rp, column=2, value=f"      {u_ak}").border = border_all; ws.cell(row=rp, column=2).font = font_bold
-                        ws.cell(row=rp, column=3).border = border_all; ws.cell(row=rp, column=4).border = border_all
-                        c_akt = ws.cell(row=rp, column=5, value=tot_akun); c_akt.font = font_bold; c_akt.border = border_all; c_akt.number_format = '#,##0'
-                        rp += 1
-                        
-                        for _, r in group_akun.iterrows():
-                            v_sat_str = get_vol_sat_combined(r['Vol_1'], r['Sat_1'], r['Vol_2'], r['Sat_2'])
-                            ws.cell(row=rp, column=1, value="").border = border_all
-                            ws.cell(row=rp, column=2, value=f"        - {r['Uraian']}").border = border_all
-                            c_volsat = ws.cell(row=rp, column=3, value=v_sat_str); c_volsat.alignment = align_center; c_volsat.border = border_all
-                            c_hrg = ws.cell(row=rp, column=4, value=r['Harga_Satuan']); c_hrg.number_format = '#,##0'; c_hrg.border = border_all
-                            c_tot = ws.cell(row=rp, column=5, value=r['Total_Biaya']); c_tot.number_format = '#,##0'; c_tot.border = border_all
-                            rp += 1
+                        print_row(k_ak, f"      {u_ak}", "", "", group['Total_Biaya'].sum(), True)
+                        for _, r in group.iterrows():
+                            v_sat = get_vol_sat_combined(r['Vol_1'], r['Sat_1'], r['Vol_2'], r['Sat_2'])
+                            print_row("", f"        - {r['Uraian']}", v_sat, r['Harga_Satuan'], r['Total_Biaya'])
                             
                     rp += 2
                     bulan_indo = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"]
@@ -802,7 +889,7 @@ elif st.session_state["role"] == "admin":
                     output = BytesIO(); wb.save(output)
                     return output.getvalue()
 
-                # --- MESIN CETAK PDF (AUTO-SCALE LANDSCAPE/PORTRAIT, CLEAN TEXT) ---
+                # --- MESIN CETAK PDF (AUTO-SCALE LANDSCAPE/PORTRAIT, COMPACT ROWS) ---
                 def export_pdf_rab(df_header, df_items, orientasi):
                     total_seluruh = df_items["Total_Biaya"].sum()
                     t_rab = df_header.get('Tahun', pd.Series(['2027'])).iloc[0]
