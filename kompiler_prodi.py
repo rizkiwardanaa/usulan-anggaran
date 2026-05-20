@@ -49,7 +49,7 @@ def save_data(df):
 
 df_usulan = load_data()
 
-# --- FUNGSI DATABASE MASTER RAB ---
+# --- FUNGSI DATABASE MASTER RAB (DITAMBAH SUMBER DANA) ---
 def load_table(table_name, default_cols):
     conn = sqlite3.connect(FILE_DB)
     try:
@@ -58,6 +58,7 @@ def load_table(table_name, default_cols):
             if col not in df.columns:
                 if "Vol" in col or "Harga" in col or "Total" in col: df[col] = 1 if "Vol" in col else 0
                 elif col == "Tahun": df[col] = "2027"
+                elif col == "Sumber_Dana": df[col] = "BOPTN"
                 else: df[col] = "-"
     except:
         df = pd.DataFrame(columns=default_cols)
@@ -70,14 +71,14 @@ def save_table(df, table_name):
     df.to_sql(table_name, conn, if_exists="replace", index=False)
     conn.close()
 
-df_m_kro = load_table("rab_m_kro", ["KRO"])
-df_m_ro = load_table("rab_m_ro", ["KRO", "RO"])
-df_m_komp = load_table("rab_m_komp", ["RO", "Komponen"])
-df_m_subkomp = load_table("rab_m_subkomp", ["Komponen", "Sub_Komponen"])
-df_m_akun = load_table("rab_m_akun", ["Account_Code", "Account_Name"]) 
+df_m_kro = load_table("rab_m_kro", ["KRO", "Sumber_Dana"])
+df_m_ro = load_table("rab_m_ro", ["KRO", "RO", "Sumber_Dana"])
+df_m_komp = load_table("rab_m_komp", ["RO", "Komponen", "Sumber_Dana"])
+df_m_subkomp = load_table("rab_m_subkomp", ["Komponen", "Sub_Komponen", "Sumber_Dana"])
+df_m_akun = load_table("rab_m_akun", ["Account_Code", "Account_Name", "Sumber_Dana"]) 
 df_m_pejabat = load_table("rab_m_pejabat", ["Jabatan", "Nama", "NIP"])
 
-df_rab_utama = load_table("rab_utama", ["ID_RAB", "Tanggal", "Tahun", "Tgl_Cetak", "KRO", "RO", "Komponen", "Sub_Komponen", "Kegiatan", "Sasaran", "Volume", "Satuan", "Alokasi", "Jabatan", "Nama_Pejabat", "NIP_Pejabat"])
+df_rab_utama = load_table("rab_utama", ["ID_RAB", "Tanggal", "Tahun", "Tgl_Cetak", "Sumber_Dana", "KRO", "RO", "Komponen", "Sub_Komponen", "Kegiatan", "Sasaran", "Volume", "Satuan", "Alokasi", "Jabatan", "Nama_Pejabat", "NIP_Pejabat"])
 df_rab_detail = load_table("rab_detail", ["ID_RAB", "Akun_Belanja", "Uraian", "Vol_1", "Sat_1", "Vol_2", "Sat_2", "Harga_Satuan", "Total_Biaya"])
 
 def format_rupiah(x):
@@ -103,7 +104,6 @@ def get_vol_sat_combined(v1, s1, v2, s2):
     s1_str = str(s1).strip() if pd.notna(s1) else ""
     v2_str = str(v2).replace(".0", "") if pd.notna(v2) else "0"
     s2_str = str(s2).strip() if pd.notna(s2) else ""
-    
     if s2_str in ["", "-"] or v2_str == "0" or v2_str == "":
         return f"{v1_str} {s1_str}"
     return f"{v1_str} {s1_str} x {v2_str} {s2_str}"
@@ -402,7 +402,7 @@ if st.session_state["role"] == "prodi":
                             "Rincian_Belanja": r["Rincian_Belanja"], "Volume": r["Volume"], "Satuan": r["Satuan"],
                             "Harga_Satuan": r["Harga_Satuan"], "Total_Usulan": r["Volume"] * r["Harga_Satuan"],
                             "Prioritas": df_curr["Prioritas"].iloc[0], "Status": "Menunggu Review", "Catatan_Fakultas": f"Revisi: {df_curr['Catatan_Fakultas'].iloc[0]}", "File_TOR": df_curr["File_TOR"].iloc[0]
-                        } for _, r in valid_rev.iterrows()])
+                        } for _, r in valid_iterrows()])
                         df_usulan = pd.concat([df_usulan, rev_entries], ignore_index=True)
                     save_data(df_usulan); st.success("Revisi dikirim!"); st.rerun()
             else:
@@ -535,11 +535,11 @@ elif st.session_state["role"] == "admin":
                     with col_pdf2: st.download_button("📑 PDF: Laporan Fakultas (Web)", data=generate_html_report(df_usulan, "Seluruh Fakultas", hidden=sembunyikan_nilai).encode('utf-8'), file_name="Cetak_FIB_Semua.html", mime="text/html", help="Tekan Ctrl+P di browser.", use_container_width=True)
 
     # ----------------------------------------------------
-    # MENU 2: PENGOLAH RAB (FINAL COMPACT VIEW + AUTO RESTORE)
+    # MENU 2: PENGOLAH RAB (BOPTN & PNBP FILTER + COMPACT)
     # ----------------------------------------------------
     elif menu_pilihan == "2. Pengolah Dokumen RAB":
         st.title("📄 Pengolah Dokumen RAB Universitas")
-        st.caption("Sistem Manajemen & Generator RAB Berjenjang dengan Pemisahan Kode Otomatis.")
+        st.caption("Sistem Manajemen & Generator RAB Berjenjang dengan Pemisahan Kode Otomatis & Sumber Dana.")
 
         tab_master, tab_buat, tab_daftar = st.tabs(["🗂️ Master Database", "📝 Buat RAB Baru", "📂 Daftar RAB Tersimpan"])
 
@@ -547,145 +547,151 @@ elif st.session_state["role"] == "admin":
             st.info("💡 Input Master Data. Format bebas, mesin otomatis memisahkan teks sebelum tanda strip '-' ke kolom Kode Excel.")
             
             with st.expander("⚡ Restore Database Master FIB (Otomatis)", expanded=True):
-                st.warning("Klik tombol di bawah ini untuk memulihkan seluruh data standar KRO, RO, Komponen, dan 50+ Akun Belanja FIB jika data Anda hilang akibat server restart.")
+                st.warning("Klik tombol di bawah ini untuk memulihkan seluruh data standar KRO, RO, Komponen, dan 50+ Akun Belanja (Telah Terbagi BOPTN & PNBP).")
                 if st.button("🚀 Restore Data Standar FIB", type="primary"):
-                    df_kro_baru = pd.DataFrame({"KRO": ["7729.BEI - Bantuan Lembaga", "7730.CAA - Sarana Bidang Pendidikan", "7730.CBJ - Prasarana Bidang Pendidikan Tinggi", "7730.DBA - Pendidikan Tinggi"]})
+                    df_kro_baru = pd.DataFrame([
+                        {"KRO": "7729.BEI - Bantuan Lembaga", "Sumber_Dana": "BOPTN"},
+                        {"KRO": "7730.CAA - Sarana Bidang Pendidikan", "Sumber_Dana": "PNBP"},
+                        {"KRO": "7730.CBJ - Prasarana Bidang Pendidikan Tinggi", "Sumber_Dana": "PNBP"},
+                        {"KRO": "7730.DBA - Pendidikan Tinggi", "Sumber_Dana": "BOPTN"}
+                    ])
                     save_table(df_kro_baru, "rab_m_kro")
                     
                     df_ro_baru = pd.DataFrame([
-                        {"KRO": "7729.BEI - Bantuan Lembaga", "RO": "7729.BEI.001 - PT Penerima Bantuan Dukungan Operasional"},
-                        {"KRO": "7729.BEI - Bantuan Lembaga", "RO": "7729.BEI.002 - PT Penerima Bantuan Pembelajaran"},
-                        {"KRO": "7729.BEI - Bantuan Lembaga", "RO": "7729.BEI.004 - PT Penerima Bantuan Sarana dan Prasarana Pembelajaran"},
-                        {"KRO": "7730.CAA - Sarana Bidang Pendidikan", "RO": "7730.CAA.001 - Sarana Pendukung Pembelajaran"},
-                        {"KRO": "7730.CAA - Sarana Bidang Pendidikan", "RO": "7730.CAA.002 - Sarana Pendukung Perkantoran"},
-                        {"KRO": "7730.CBJ - Prasarana Bidang Pendidikan Tinggi", "RO": "7730.CBJ.001 - Prasarana Pendukung Pembelajaran"},
-                        {"KRO": "7730.CBJ - Prasarana Bidang Pendidikan Tinggi", "RO": "7730.CBJ.002 - Prasarana Pendukung Perkantoran"},
-                        {"KRO": "7730.DBA - Pendidikan Tinggi", "RO": "7730.DBA.001 - Layanan Pendidikan"},
-                        {"KRO": "7730.DBA - Pendidikan Tinggi", "RO": "7730.DBA.002 - Dukungan Operasional Pembelajaran"},
-                        {"KRO": "7730.DBA - Pendidikan Tinggi", "RO": "7730.DBA.003 - Penelitian dan Pengabdian Masyarakat"},
-                        {"KRO": "7730.DBA - Pendidikan Tinggi", "RO": "7730.DBA.004 - Pengabdian Kepada Masyarakat"}
+                        {"KRO": "7729.BEI - Bantuan Lembaga", "RO": "7729.BEI.001 - PT Penerima Bantuan Dukungan Operasional", "Sumber_Dana": "BOPTN"},
+                        {"KRO": "7729.BEI - Bantuan Lembaga", "RO": "7729.BEI.002 - PT Penerima Bantuan Pembelajaran", "Sumber_Dana": "BOPTN"},
+                        {"KRO": "7729.BEI - Bantuan Lembaga", "RO": "7729.BEI.004 - PT Penerima Bantuan Sarana dan Prasarana Pembelajaran", "Sumber_Dana": "BOPTN"},
+                        {"KRO": "7730.CAA - Sarana Bidang Pendidikan", "RO": "7730.CAA.001 - Sarana Pendukung Pembelajaran", "Sumber_Dana": "PNBP"},
+                        {"KRO": "7730.CAA - Sarana Bidang Pendidikan", "RO": "7730.CAA.002 - Sarana Pendukung Perkantoran", "Sumber_Dana": "PNBP"},
+                        {"KRO": "7730.CBJ - Prasarana Bidang Pendidikan Tinggi", "RO": "7730.CBJ.001 - Prasarana Pendukung Pembelajaran", "Sumber_Dana": "PNBP"},
+                        {"KRO": "7730.CBJ - Prasarana Bidang Pendidikan Tinggi", "RO": "7730.CBJ.002 - Prasarana Pendukung Perkantoran", "Sumber_Dana": "PNBP"},
+                        {"KRO": "7730.DBA - Pendidikan Tinggi", "RO": "7730.DBA.001 - Layanan Pendidikan", "Sumber_Dana": "BOPTN"},
+                        {"KRO": "7730.DBA - Pendidikan Tinggi", "RO": "7730.DBA.002 - Dukungan Operasional Pembelajaran", "Sumber_Dana": "BOPTN"},
+                        {"KRO": "7730.DBA - Pendidikan Tinggi", "RO": "7730.DBA.003 - Penelitian dan Pengabdian Masyarakat", "Sumber_Dana": "BOPTN"},
+                        {"KRO": "7730.DBA - Pendidikan Tinggi", "RO": "7730.DBA.004 - Pengabdian Kepada Masyarakat", "Sumber_Dana": "BOPTN"}
                     ])
                     save_table(df_ro_baru, "rab_m_ro")
                     
                     df_komp_baru = pd.DataFrame([
-                        {"RO": "7729.BEI.001 - PT Penerima Bantuan Dukungan Operasional", "Komponen": "004 - Dukungan Operasional Penyelenggaraan Pendidikan"},
-                        {"RO": "7729.BEI.002 - PT Penerima Bantuan Pembelajaran", "Komponen": "004 - Dukungan Operasional Penyelenggaraan Pendidikan"},
-                        {"RO": "7729.BEI.004 - PT Penerima Bantuan Sarana dan Prasarana Pembelajaran", "Komponen": "004 - Dukungan Operasional Penyelenggaraan Pendidikan"},
-                        {"RO": "7730.CAA.001 - Sarana Pendukung Pembelajaran", "Komponen": "051 - Pengadaan Sarana Pendukung Pembelajaran"},
-                        {"RO": "7730.CAA.002 - Sarana Pendukung Perkantoran", "Komponen": "051 - Sarana Pendukung Perkantoran"},
-                        {"RO": "7730.CBJ.001 - Prasarana Pendukung Pembelajaran", "Komponen": "051 - Pengadaan Prasarana Pendukung Pembelajaran"},
-                        {"RO": "7730.CBJ.002 - Prasarana Pendukung Perkantoran", "Komponen": "051 - Pengadaan Prasarana Pendukung Perkantoran"},
-                        {"RO": "7730.DBA.001 - Layanan Pendidikan", "Komponen": "051 - Pemeliharaan Sarana dan Prasarana Pembelajaran"},
-                        {"RO": "7730.DBA.001 - Layanan Pendidikan", "Komponen": "052 - Pemeliharaan Sarana dan Prasarana Perkantoran"},
-                        {"RO": "7730.DBA.001 - Layanan Pendidikan", "Komponen": "053 - Penyelenggaraan Layanan Pendidikan Perguruan Tinggi"},
-                        {"RO": "7730.DBA.002 - Dukungan Operasional Pembelajaran", "Komponen": "051 - Penyelenggaraan Dukungan Operasional Pembelajaran"},
-                        {"RO": "7730.DBA.002 - Dukungan Operasional Pembelajaran", "Komponen": "053 - Pelaksanaan Layanan Pengembangan Sistem Tata Kelola"},
-                        {"RO": "7730.DBA.003 - Penelitian dan Pengabdian Masyarakat", "Komponen": "051 - Penelitian"},
-                        {"RO": "7730.DBA.003 - Penelitian dan Pengabdian Masyarakat", "Komponen": "052 - Pengabdian Kepada Masyarakat"}
+                        {"RO": "7729.BEI.001 - PT Penerima Bantuan Dukungan Operasional", "Komponen": "004 - Dukungan Operasional Penyelenggaraan Pendidikan", "Sumber_Dana": "BOPTN"},
+                        {"RO": "7729.BEI.002 - PT Penerima Bantuan Pembelajaran", "Komponen": "004 - Dukungan Operasional Penyelenggaraan Pendidikan", "Sumber_Dana": "BOPTN"},
+                        {"RO": "7729.BEI.004 - PT Penerima Bantuan Sarana dan Prasarana Pembelajaran", "Komponen": "004 - Dukungan Operasional Penyelenggaraan Pendidikan", "Sumber_Dana": "BOPTN"},
+                        {"RO": "7730.CAA.001 - Sarana Pendukung Pembelajaran", "Komponen": "051 - Pengadaan Sarana Pendukung Pembelajaran", "Sumber_Dana": "PNBP"},
+                        {"RO": "7730.CAA.002 - Sarana Pendukung Perkantoran", "Komponen": "051 - Sarana Pendukung Perkantoran", "Sumber_Dana": "PNBP"},
+                        {"RO": "7730.CBJ.001 - Prasarana Pendukung Pembelajaran", "Komponen": "051 - Pengadaan Prasarana Pendukung Pembelajaran", "Sumber_Dana": "PNBP"},
+                        {"RO": "7730.CBJ.002 - Prasarana Pendukung Perkantoran", "Komponen": "051 - Pengadaan Prasarana Pendukung Perkantoran", "Sumber_Dana": "PNBP"},
+                        {"RO": "7730.DBA.001 - Layanan Pendidikan", "Komponen": "051 - Pemeliharaan Sarana dan Prasarana Pembelajaran", "Sumber_Dana": "BOPTN"},
+                        {"RO": "7730.DBA.001 - Layanan Pendidikan", "Komponen": "052 - Pemeliharaan Sarana dan Prasarana Perkantoran", "Sumber_Dana": "BOPTN"},
+                        {"RO": "7730.DBA.001 - Layanan Pendidikan", "Komponen": "053 - Penyelenggaraan Layanan Pendidikan Perguruan Tinggi", "Sumber_Dana": "BOPTN"},
+                        {"RO": "7730.DBA.002 - Dukungan Operasional Pembelajaran", "Komponen": "051 - Penyelenggaraan Dukungan Operasional Pembelajaran", "Sumber_Dana": "BOPTN"},
+                        {"RO": "7730.DBA.002 - Dukungan Operasional Pembelajaran", "Komponen": "053 - Pelaksanaan Layanan Pengembangan Sistem Tata Kelola", "Sumber_Dana": "BOPTN"},
+                        {"RO": "7730.DBA.003 - Penelitian dan Pengabdian Masyarakat", "Komponen": "051 - Penelitian", "Sumber_Dana": "BOPTN"},
+                        {"RO": "7730.DBA.003 - Penelitian dan Pengabdian Masyarakat", "Komponen": "052 - Pengabdian Kepada Masyarakat", "Sumber_Dana": "BOPTN"}
                     ])
                     save_table(df_komp_baru, "rab_m_komp")
                     
-                    df_akun_baru = pd.DataFrame([
+                    # Kita duplikat Akun Standar ke BOPTN dan PNBP agar bisa dipakai di keduanya
+                    akun_standar = [
                         {"Account_Code": "521111", "Account_Name": "Belanja Keperluan Perkantoran"},
                         {"Account_Code": "521115", "Account_Name": "Belanja Honor Operasional Satuan Kerja"},
                         {"Account_Code": "521119", "Account_Name": "Belanja Barang Operasional Lainnya"},
                         {"Account_Code": "521211", "Account_Name": "Belanja Bahan"},
                         {"Account_Code": "521219", "Account_Name": "Belanja Barang Non Operasional Lainnya"},
-                        {"Account_Code": "521253", "Account_Name": "Belanja Gedung dan Bangunan Ekstrakomptabel"},
-                        {"Account_Code": "522111", "Account_Name": "Belanja Langganan Listrik"},
-                        {"Account_Code": "522112", "Account_Name": "Belanja Langganan Telepon"},
-                        {"Account_Code": "522113", "Account_Name": "Belanja Langganan Air"},
-                        {"Account_Code": "522119", "Account_Name": "Belanja Langganan Daya dan Jasa Lainnya"},
-                        {"Account_Code": "522121", "Account_Name": "Belanja Jasa Pos dan Giro"},
                         {"Account_Code": "522131", "Account_Name": "Belanja Jasa Konsultan"},
                         {"Account_Code": "522141", "Account_Name": "Belanja Sewa"},
                         {"Account_Code": "522151", "Account_Name": "Belanja Jasa Profesi"},
-                        {"Account_Code": "523119", "Account_Name": "Belanja Biaya Pemeliharaan Gedung Lainnya"},
                         {"Account_Code": "523121", "Account_Name": "Belanja Biaya Pemeliharaan Peralatan dan Mesin"},
-                        {"Account_Code": "523129", "Account_Name": "Belanja Biaya Pemeliharaan Peralatan Lainnya"},
-                        {"Account_Code": "523131", "Account_Name": "Belanja Biaya Pemeliharaan Gedung dan Bangunan"},
-                        {"Account_Code": "523132", "Account_Name": "Belanja Biaya Pemeliharaan Irigasi"},
-                        {"Account_Code": "523133", "Account_Name": "Belanja Biaya Pemeliharaan Jaringan"},
-                        {"Account_Code": "523199", "Account_Name": "Belanja Biaya Pemeliharaan Lainnya"},
                         {"Account_Code": "524111", "Account_Name": "Belanja Perjalanan Dinas Biasa"},
                         {"Account_Code": "524114", "Account_Name": "Belanja Perjalanan Dinas Paket Meeting Dalam Kota"},
                         {"Account_Code": "524119", "Account_Name": "Belanja Perjalanan Dinas Paket Luar Kota"},
-                        {"Account_Code": "524211", "Account_Name": "Belanja Perjalanan Biasa - Luar Negeri"},
-                        {"Account_Code": "525111", "Account_Name": "Belanja Gaji dan Tunjangan"},
                         {"Account_Code": "525112", "Account_Name": "Belanja Barang"},
                         {"Account_Code": "525113", "Account_Name": "Belanja Jasa"},
-                        {"Account_Code": "525114", "Account_Name": "Belanja Pemeliharaan"},
                         {"Account_Code": "525115", "Account_Name": "Belanja Perjalanan Dinas"},
-                        {"Account_Code": "525119", "Account_Name": "Belanja Penyediaan Barang dan Jasa Lainnya"},
                         {"Account_Code": "525162", "Account_Name": "Belanja Peralatan dan Mesin Ekstrakomptabel BLU"},
-                        {"Account_Code": "525163", "Account_Name": "Belanja Gedung dan Bangunan - Ekstrakomptabel BLU"},
                         {"Account_Code": "532111", "Account_Name": "Belanja Modal Peralatan dan Mesin"},
-                        {"Account_Code": "532114", "Account_Name": "Belanja Modal Sewa Peralatan dan Mesin"},
-                        {"Account_Code": "532121", "Account_Name": "Belanja Penambahan Nilai Peralatan dan Mesin"},
-                        {"Account_Code": "533114", "Account_Name": "Belanja Modal Sewa Peralatan Gedung"},
-                        {"Account_Code": "533115", "Account_Name": "Belanja Modal Perencanaan Gedung"},
-                        {"Account_Code": "533116", "Account_Name": "Belanja Modal Perizinan Gedung"},
-                        {"Account_Code": "533117", "Account_Name": "Belanja Modal Pengosongan Bangunan"},
-                        {"Account_Code": "533121", "Account_Name": "Belanja Penambahan Nilai Gedung"},
-                        {"Account_Code": "534111", "Account_Name": "Belanja Modal Jalan dan Jembatan"},
-                        {"Account_Code": "534112", "Account_Name": "Belanja Modal Bahan Baku Jalan"},
-                        {"Account_Code": "534115", "Account_Name": "Belanja Modal Perencanaan Jalan"},
-                        {"Account_Code": "534121", "Account_Name": "Belanja Modal Irigasi"},
-                        {"Account_Code": "534125", "Account_Name": "Belanja Modal Perencanaan Irigasi"},
-                        {"Account_Code": "534131", "Account_Name": "Belanja Modal Jaringan"},
-                        {"Account_Code": "537112", "Account_Name": "Belanja Modal Peralatan dan Mesin - BLU"},
-                        {"Account_Code": "537113", "Account_Name": "Belanja Modal Gedung dan Bangunan - BLU"},
-                        {"Account_Code": "537114", "Account_Name": "Belanja Modal Jalan, Irigasi dan Jaringan - BLU"},
-                        {"Account_Code": "537115", "Account_Name": "Belanja Modal Lainnya - BLU"},
-                        {"Account_Code": "543122", "Account_Name": "Belanja Modal Bahan Baku Irigasi"}
-                    ])
-                    save_table(df_akun_baru, "rab_m_akun")
-                    st.success("🎉 BOOM! Seluruh Data Master FIB berhasil dipulihkan secara otomatis!"); st.rerun()
+                        {"Account_Code": "537112", "Account_Name": "Belanja Modal Peralatan dan Mesin - BLU"}
+                    ]
+                    
+                    df_akun_boptn = pd.DataFrame(akun_standar); df_akun_boptn["Sumber_Dana"] = "BOPTN"
+                    df_akun_pnbp = pd.DataFrame(akun_standar); df_akun_pnbp["Sumber_Dana"] = "PNBP"
+                    df_akun_gabung = pd.concat([df_akun_boptn, df_akun_pnbp], ignore_index=True)
+                    save_table(df_akun_gabung, "rab_m_akun")
+                    
+                    st.success("🎉 BOOM! Seluruh Data Master FIB (BOPTN & PNBP Terpisah) berhasil dipulihkan secara otomatis!"); st.rerun()
+
+            sumber_master = st.radio("Pilih Kategori Master yang Ingin Diedit:", ["BOPTN", "PNBP"], horizontal=True)
+            st.markdown("---")
 
             col_m1, col_m2 = st.columns(2)
             with col_m1:
-                st.markdown("**1. Master KRO**")
-                edit_kro = st.data_editor(df_m_kro, num_rows="dynamic", use_container_width=True, hide_index=True, key="me_kro")
-                if st.button("💾 Simpan KRO"): save_table(edit_kro.dropna(how='all'), "rab_m_kro"); st.rerun()
+                st.markdown(f"**1. Master KRO ({sumber_master})**")
+                df_kro_f = df_m_kro[df_m_kro['Sumber_Dana'] == sumber_master].copy()
+                edit_kro = st.data_editor(df_kro_f[["KRO"]], num_rows="dynamic", use_container_width=True, hide_index=True, key="me_kro")
+                if st.button("💾 Simpan KRO"): 
+                    edit_kro['Sumber_Dana'] = sumber_master
+                    df_sisa = df_m_kro[df_m_kro['Sumber_Dana'] != sumber_master]
+                    save_table(pd.concat([df_sisa, edit_kro.dropna(subset=["KRO"])]), "rab_m_kro"); st.rerun()
                     
-                st.markdown("**3. Master Komponen**")
-                list_ro = df_m_ro["RO"].tolist() if not df_m_ro.empty else ["Isi Master RO Dulu"]
-                edit_komp = st.data_editor(df_m_komp, num_rows="dynamic", use_container_width=True, hide_index=True, column_config={"RO": st.column_config.SelectboxColumn("Induk RO", options=list_ro, required=True)}, key="me_komp")
-                if st.button("💾 Simpan Komponen"): save_table(edit_komp.dropna(how='all'), "rab_m_komp"); st.rerun()
+                st.markdown(f"**3. Master Komponen ({sumber_master})**")
+                df_komp_f = df_m_komp[df_m_komp['Sumber_Dana'] == sumber_master].copy()
+                list_ro = df_m_ro[df_m_ro['Sumber_Dana'] == sumber_master]["RO"].tolist()
+                edit_komp = st.data_editor(df_komp_f[["RO", "Komponen"]], num_rows="dynamic", use_container_width=True, hide_index=True, column_config={"RO": st.column_config.SelectboxColumn("Induk RO", options=list_ro, required=True)}, key="me_komp")
+                if st.button("💾 Simpan Komponen"): 
+                    edit_komp['Sumber_Dana'] = sumber_master
+                    df_sisa = df_m_komp[df_m_komp['Sumber_Dana'] != sumber_master]
+                    save_table(pd.concat([df_sisa, edit_komp.dropna(subset=["Komponen"])]), "rab_m_komp"); st.rerun()
 
-                st.markdown("**5. Master Akun Belanja**")
-                edit_akun = st.data_editor(df_m_akun, num_rows="dynamic", use_container_width=True, hide_index=True, key="me_akun")
-                if st.button("💾 Simpan Akun Belanja"): save_table(edit_akun.dropna(how='all'), "rab_m_akun"); st.rerun()
+                st.markdown(f"**5. Master Akun Belanja ({sumber_master})**")
+                df_akun_f = df_m_akun[df_m_akun['Sumber_Dana'] == sumber_master].copy()
+                edit_akun = st.data_editor(df_akun_f[["Account_Code", "Account_Name"]], num_rows="dynamic", use_container_width=True, hide_index=True, key="me_akun")
+                if st.button("💾 Simpan Akun Belanja"): 
+                    edit_akun['Sumber_Dana'] = sumber_master
+                    df_sisa = df_m_akun[df_m_akun['Sumber_Dana'] != sumber_master]
+                    save_table(pd.concat([df_sisa, edit_akun.dropna(subset=["Account_Code"])]), "rab_m_akun"); st.rerun()
 
             with col_m2:
-                st.markdown("**2. Master RO (Rincian Output)**")
-                list_kro = df_m_kro["KRO"].tolist() if not df_m_kro.empty else ["Isi Master KRO Dulu"]
-                edit_ro = st.data_editor(df_m_ro, num_rows="dynamic", use_container_width=True, hide_index=True, column_config={"KRO": st.column_config.SelectboxColumn("Induk KRO", options=list_kro, required=True)}, key="me_ro")
-                if st.button("💾 Simpan RO"): save_table(edit_ro.dropna(how='all'), "rab_m_ro"); st.rerun()
+                st.markdown(f"**2. Master RO ({sumber_master})**")
+                df_ro_f = df_m_ro[df_m_ro['Sumber_Dana'] == sumber_master].copy()
+                list_kro = df_m_kro[df_m_kro['Sumber_Dana'] == sumber_master]["KRO"].tolist()
+                edit_ro = st.data_editor(df_ro_f[["KRO", "RO"]], num_rows="dynamic", use_container_width=True, hide_index=True, column_config={"KRO": st.column_config.SelectboxColumn("Induk KRO", options=list_kro, required=True)}, key="me_ro")
+                if st.button("💾 Simpan RO"): 
+                    edit_ro['Sumber_Dana'] = sumber_master
+                    df_sisa = df_m_ro[df_m_ro['Sumber_Dana'] != sumber_master]
+                    save_table(pd.concat([df_sisa, edit_ro.dropna(subset=["RO"])]), "rab_m_ro"); st.rerun()
                 
-                st.markdown("**4. Master Sub-Komponen**")
-                list_komp = df_m_komp["Komponen"].tolist() if not df_m_komp.empty else ["Isi Master Komponen Dulu"]
-                edit_subkomp = st.data_editor(df_m_subkomp, num_rows="dynamic", use_container_width=True, hide_index=True, column_config={"Komponen": st.column_config.SelectboxColumn("Induk Komponen", options=list_komp, required=True)}, key="me_subkomp")
-                if st.button("💾 Simpan Sub-Komponen"): save_table(edit_subkomp.dropna(how='all'), "rab_m_subkomp"); st.rerun()
+                st.markdown(f"**4. Master Sub-Komponen ({sumber_master})**")
+                df_sub_f = df_m_subkomp[df_m_subkomp['Sumber_Dana'] == sumber_master].copy()
+                list_komp = df_m_komp[df_m_komp['Sumber_Dana'] == sumber_master]["Komponen"].tolist()
+                edit_subkomp = st.data_editor(df_sub_f[["Komponen", "Sub_Komponen"]], num_rows="dynamic", use_container_width=True, hide_index=True, column_config={"Komponen": st.column_config.SelectboxColumn("Induk Komponen", options=list_komp, required=True)}, key="me_subkomp")
+                if st.button("💾 Simpan Sub-Komponen"): 
+                    edit_subkomp['Sumber_Dana'] = sumber_master
+                    df_sisa = df_m_subkomp[df_m_subkomp['Sumber_Dana'] != sumber_master]
+                    save_table(pd.concat([df_sisa, edit_subkomp.dropna(subset=["Sub_Komponen"])]), "rab_m_subkomp"); st.rerun()
 
-                st.markdown("**6. Master Pejabat (Penandatangan)**")
+                st.markdown("**6. Master Pejabat (Penandatangan Bersama)**")
                 edit_pejabat = st.data_editor(df_m_pejabat, num_rows="dynamic", use_container_width=True, hide_index=True, key="me_pej")
                 if st.button("💾 Simpan Data Pejabat"): save_table(edit_pejabat.dropna(how='all'), "rab_m_pejabat"); st.rerun()
 
         with tab_buat:
             if df_m_kro.empty or df_m_ro.empty or df_m_komp.empty or df_m_akun.empty:
-                st.warning("⚠️ Master Database masih kosong! Isi data di tab Master terlebih dahulu.")
+                st.warning("⚠️ Master Database masih kosong! Isi data di tab Master atau klik Restore Data.")
             else:
+                sumber_buat = st.radio("Pilih Sumber Dana RAB yang akan Dibuat:", ["BOPTN", "PNBP"], horizontal=True, key="rb_buat")
+                st.markdown("---")
+                
                 st.subheader("1. Klasifikasi Output RAB")
                 col_c1, col_c2 = st.columns(2)
-                pilih_kro = col_c1.selectbox("Pilih KRO", df_m_kro["KRO"].tolist())
-                opsi_ro = df_m_ro[df_m_ro["KRO"] == pilih_kro]["RO"].tolist()
+                opsi_kro = df_m_kro[df_m_kro['Sumber_Dana'] == sumber_buat]["KRO"].tolist()
+                pilih_kro = col_c1.selectbox("Pilih KRO", opsi_kro if opsi_kro else ["Tidak ada KRO"])
+                
+                opsi_ro = df_m_ro[(df_m_ro['Sumber_Dana'] == sumber_buat) & (df_m_ro['KRO'] == pilih_kro)]["RO"].tolist()
                 pilih_ro = col_c2.selectbox("Pilih RO", opsi_ro if opsi_ro else ["Tidak ada RO"])
                 
                 col_c3, col_c4 = st.columns(2)
-                opsi_komp = df_m_komp[df_m_komp["RO"] == pilih_ro]["Komponen"].tolist()
+                opsi_komp = df_m_komp[(df_m_komp['Sumber_Dana'] == sumber_buat) & (df_m_komp['RO'] == pilih_ro)]["Komponen"].tolist()
                 pilih_komp = col_c3.selectbox("Pilih Komponen", opsi_komp if opsi_komp else ["Tidak ada Komponen"])
-                opsi_subkomp = df_m_subkomp[df_m_subkomp["Komponen"] == pilih_komp]["Sub_Komponen"].tolist()
+                
+                opsi_subkomp = df_m_subkomp[(df_m_subkomp['Sumber_Dana'] == sumber_buat) & (df_m_subkomp['Komponen'] == pilih_komp)]["Sub_Komponen"].tolist()
                 pilih_subkomp = col_c4.selectbox("Pilih Sub-Komponen", opsi_subkomp if opsi_subkomp else ["Tidak Ada Sub-Komponen"])
 
                 st.markdown("---")
@@ -700,16 +706,13 @@ elif st.session_state["role"] == "admin":
                 rab_sasaran = col_u2.text_input("Sasaran Kegiatan", value=default_sasaran)
                 rab_vol = col_u1.number_input("Volume Target", value=1, min_value=1)
                 rab_satuan = col_u2.text_input("Satuan Ukur", placeholder="Contoh: Layanan / Bulan")
-                
                 rab_tahun = col_u1.text_input("Tahun Anggaran", value="2027")
 
                 st.markdown("---")
                 st.subheader("3. Rincian Belanja (Pengali Volume & Satuan)")
                 
-                opsi_akun = []
-                if not df_m_akun.empty:
-                    for _, row in df_m_akun.iterrows():
-                        opsi_akun.append(f"{row['Account_Code']} - {row['Account_Name']}")
+                df_akun_f = df_m_akun[df_m_akun['Sumber_Dana'] == sumber_buat]
+                opsi_akun = [f"{row['Account_Code']} - {row['Account_Name']}" for _, row in df_akun_f.iterrows()]
                 
                 template_detail = pd.DataFrame([{"Akun Belanja": opsi_akun[0] if opsi_akun else "", "Uraian Belanja": "", "Vol 1": 1, "Sat 1": "Unit", "Vol 2": 1, "Sat 2": "-", "Harga Satuan": 0}])
                 
@@ -734,7 +737,7 @@ elif st.session_state["role"] == "admin":
                 total_rab_live = (df_input_detail["Vol_1_Num"] * df_input_detail["Vol_2_Num"] * df_input_detail["Harga_Num"]).sum()
                 
                 st.markdown("#### 💰 Akumulasi Anggaran Alokasi Dana")
-                st.metric("Total Alokasi Dana (Otomatis Mengikuti Detail)", f"Rp {format_rupiah(total_rab_live)}")
+                st.metric(f"Total Alokasi Dana {sumber_buat}", f"Rp {format_rupiah(total_rab_live)}")
                 rab_alokasi = total_rab_live
 
                 st.markdown("---")
@@ -755,7 +758,7 @@ elif st.session_state["role"] == "admin":
                         
                         new_utama = pd.DataFrame([{
                             "ID_RAB": id_rab_baru, "Tanggal": tgl_sekarang, "Tahun": str(rab_tahun), "Tgl_Cetak": str(tgl_cetak),
-                            "KRO": pilih_kro, "RO": pilih_ro, "Komponen": pilih_komp, "Sub_Komponen": pilih_subkomp,
+                            "Sumber_Dana": sumber_buat, "KRO": pilih_kro, "RO": pilih_ro, "Komponen": pilih_komp, "Sub_Komponen": pilih_subkomp,
                             "Kegiatan": rab_kegiatan, "Sasaran": rab_sasaran, "Volume": rab_vol, "Satuan": rab_satuan, "Alokasi": rab_alokasi,
                             "Jabatan": dt_pjb['Jabatan'], "Nama_Pejabat": dt_pjb['Nama'], "NIP_Pejabat": dt_pjb['NIP']
                         }])
@@ -774,22 +777,22 @@ elif st.session_state["role"] == "admin":
             if df_rab_utama.empty: st.info("Belum ada dokumen RAB yang tersimpan.")
             else:
                 st.subheader("Arsip Dokumen RAB")
-                opsi_arsip = {row['ID_RAB']: f"[{row['Tanggal']}] {row['Kegiatan']}" for _, row in df_rab_utama.iterrows()}
+                opsi_arsip = {row['ID_RAB']: f"[{row['Sumber_Dana']}] {row['Kegiatan']} ({row['Tahun']})" for _, row in df_rab_utama.iterrows()}
                 pilih_arsip = st.selectbox("Pilih RAB yang ingin dilihat/diunduh:", options=list(opsi_arsip.keys()), format_func=lambda x: opsi_arsip[x])
                 
                 head_terpilih = df_rab_utama[df_rab_utama["ID_RAB"] == pilih_arsip]
                 detail_terpilih = df_rab_detail[df_rab_detail["ID_RAB"] == pilih_arsip]
                 
+                s_dana = head_terpilih.get('Sumber_Dana', pd.Series(['BOPTN'])).iloc[0]
                 tahun_rab = head_terpilih.get('Tahun', pd.Series(['2027'])).iloc[0]
-                if tahun_rab == "-": tahun_rab = "2027"
 
                 df_view = detail_terpilih.copy()
                 df_view['Kode Akun'] = df_view['Akun_Belanja'].apply(lambda x: split_kode(x)[0])
                 df_view['Nama Akun Belanja'] = df_view['Akun_Belanja'].apply(lambda x: split_kode(x)[1])
                 df_view['Volume & Satuan'] = df_view.apply(lambda r: get_vol_sat_combined(r['Vol_1'], r['Sat_1'], r['Vol_2'], r['Sat_2']), axis=1)
                 
-                st.markdown(f"**Klasifikasi Dokumen:** {head_terpilih['KRO'].iloc[0]} ➔ {head_terpilih['RO'].iloc[0]} ➔ {head_terpilih['Komponen'].iloc[0]}")
-                st.markdown(f"**Total Anggaran Terakumulasi:** Rp {format_rupiah(detail_terpilih['Total_Biaya'].sum())}")
+                st.markdown(f"**Klasifikasi Dokumen:** {head_terpilih['KRO'].iloc[0]} ➔ {head_terpilih['RO'].iloc[0]}")
+                st.markdown(f"**Total Anggaran Terakumulasi ({s_dana}):** Rp {format_rupiah(detail_terpilih['Total_Biaya'].sum())}")
                 
                 st.dataframe(df_view[["Kode Akun", "Nama Akun Belanja", "Uraian", "Volume & Satuan", "Harga_Satuan", "Total_Biaya"]].style.format({"Harga_Satuan": format_rupiah, "Total_Biaya": format_rupiah}), hide_index=True, use_container_width=True)
                 
@@ -814,8 +817,6 @@ elif st.session_state["role"] == "admin":
 
                     ws.merge_cells('A1:E1')
                     t_rab = df_header.get('Tahun', pd.Series(['2027'])).iloc[0]
-                    if t_rab == "-": t_rab = "2027"
-                    
                     ws['A1'] = f"RINCIAN ANGGARAN BIAYA (RAB) FAKULTAS ILMU BUDAYA\nTAHUN ANGGARAN {t_rab}"
                     ws['A1'].alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
                     ws['A1'].font = font_header
@@ -824,6 +825,7 @@ elif st.session_state["role"] == "admin":
                     meta_rows = [
                         ("Kementerian/ Lembaga:", "(023) KEMENTERIAN PENDIDIKAN TINGGI, SAINS DAN TEKNOLOGI"), 
                         ("Unit Eselon II/ Satker:", "(17) Dirjen Diktiristek / (677524) UNIVERSITAS MULAWARMAN"),
+                        ("Sumber Dana:", df_header.get('Sumber_Dana', pd.Series(['BOPTN'])).iloc[0]),
                         ("Kegiatan:", df_header['Kegiatan'].iloc[0]), ("Sasaran Kegiatan:", df_header['Sasaran'].iloc[0]), 
                         ("Klasifikasi Rincian Output:", df_header['KRO'].iloc[0]),
                         ("Volume:", df_header['Volume'].iloc[0]), ("Satuan Ukur:", df_header['Satuan'].iloc[0]), 
@@ -841,7 +843,7 @@ elif st.session_state["role"] == "admin":
                         cell = ws.cell(row=rp, column=col_idx, value=text); cell.font = font_bold; cell.alignment = align_center; cell.border = border_all
                     rp += 1
 
-                    # PRINT HIRARKI PADAT (TANPA BARIS KOSONG)
+                    # PRINT HIRARKI PADAT
                     def print_row(kode, urai, vol, hrg, tot, is_bold=False):
                         nonlocal rp
                         ws.cell(row=rp, column=1, value=kode).border = border_all
@@ -855,11 +857,9 @@ elif st.session_state["role"] == "admin":
                         rp += 1
 
                     total_seluruh = df_items["Total_Biaya"].sum()
-                    
                     for head_col, indent in [('RO', ""), ('Komponen', "  "), ('Sub_Komponen', "    ")]:
                         if df_header[head_col].iloc[0] and str(df_header[head_col].iloc[0]).strip() not in ["", "-", "Tidak Ada Sub-Komponen"]:
                             k_val, u_val = split_kode(df_header[head_col].iloc[0])
-                            
                             if "." in k_val and len(k_val.split(".")) == 2 and len(k_val.split(".")[0]) == 3:
                                 k1, k2 = k_val.split(".")
                                 print_row(k1, f"{indent}{u_val}", "", "", total_seluruh, True)
@@ -893,7 +893,7 @@ elif st.session_state["role"] == "admin":
                 def export_pdf_rab(df_header, df_items, orientasi):
                     total_seluruh = df_items["Total_Biaya"].sum()
                     t_rab = df_header.get('Tahun', pd.Series(['2027'])).iloc[0]
-                    if t_rab == "-": t_rab = "2027"
+                    s_dana = df_header.get('Sumber_Dana', pd.Series(['BOPTN'])).iloc[0]
                     
                     try: 
                         tobj = datetime.strptime(df_header['Tgl_Cetak'].iloc[0], "%Y-%m-%d")
@@ -921,6 +921,7 @@ elif st.session_state["role"] == "admin":
                     <table class="tabel-meta">
                         <tr><td class="bold">Kementerian/ Lembaga</td><td>:</td><td>(023) KEMENTERIAN PENDIDIKAN TINGGI, SAINS DAN TEKNOLOGI</td></tr>
                         <tr><td class="bold">Unit Eselon II/ Satker</td><td>:</td><td>(17) Dirjen Diktiristek / (677524) UNIVERSITAS MULAWARMAN</td></tr>
+                        <tr><td class="bold">Sumber Dana</td><td>:</td><td>{s_dana}</td></tr>
                         <tr><td class="bold">Kegiatan</td><td>:</td><td>{df_header['Kegiatan'].iloc[0]}</td></tr>
                         <tr><td class="bold">Sasaran Kegiatan</td><td>:</td><td>{df_header['Sasaran'].iloc[0]}</td></tr>
                         <tr><td class="bold">Klasifikasi Rincian Output</td><td>:</td><td>{df_header['KRO'].iloc[0]}</td></tr>
@@ -961,8 +962,8 @@ elif st.session_state["role"] == "admin":
 
                 col_x1, col_x2 = st.columns([1, 4])
                 with col_x1:
-                    st.download_button("📥 Download Excel Resmi", data=export_excel_rab(head_terpilih, detail_terpilih), file_name=f"RAB_{tahun_rab}_{pilih_arsip}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", type="primary")
-                    st.download_button("📑 PDF: Cetak RAB (Web)", data=export_pdf_rab(head_terpilih, detail_terpilih, orientasi_pdf).encode('utf-8'), file_name=f"Cetak_RAB_{tahun_rab}_{pilih_arsip}.html", mime="text/html", help="Tekan Ctrl+P di browser lalu pilih opsi 'Fit to Page'.")
+                    st.download_button("📥 Download Excel Resmi", data=export_excel_rab(head_terpilih, detail_terpilih), file_name=f"RAB_{s_dana}_{tahun_rab}_{pilih_arsip}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", type="primary")
+                    st.download_button("📑 PDF: Cetak RAB (Web)", data=export_pdf_rab(head_terpilih, detail_terpilih, orientasi_pdf).encode('utf-8'), file_name=f"Cetak_RAB_{s_dana}_{tahun_rab}_{pilih_arsip}.html", mime="text/html", help="Tekan Ctrl+P di browser lalu pilih opsi 'Fit to Page'.")
                 with col_x2:
                     if st.button("🗑️ Hapus Dokumen Ini"):
                         df_rab_utama = df_rab_utama[df_rab_utama["ID_RAB"] != pilih_arsip]
