@@ -277,7 +277,47 @@ def show_page():
                 save_table(df_akun_gabung, "rab_m_akun")
                 
                 st.success("🎉 BOOM! Seluruh Data Master FIB (BOPTN & PNBP) berhasil dipulihkan secara otomatis!"); st.rerun()
-
+        with st.expander("💾 Import & Export Data Master (Excel)", expanded=False):
+            st.info("Gunakan fitur ini untuk mendownload backup seluruh data master ke Excel, atau mengunggah (mengembalikan) data master dari file backup Excel.")
+            c_eks, c_imp = st.columns(2)
+            
+            with c_eks:
+                st.markdown("**1. Export Data Master**")
+                output_master = BytesIO()
+                with pd.ExcelWriter(output_master, engine='openpyxl') as writer:
+                    df_m_kro.to_excel(writer, index=False, sheet_name='KRO')
+                    df_m_ro.to_excel(writer, index=False, sheet_name='RO')
+                    df_m_komp.to_excel(writer, index=False, sheet_name='Komponen')
+                    df_m_subkomp.to_excel(writer, index=False, sheet_name='Sub_Komponen')
+                    df_m_akun.to_excel(writer, index=False, sheet_name='Akun')
+                    df_m_pejabat.to_excel(writer, index=False, sheet_name='Pejabat')
+                st.download_button(
+                    label="📥 Download Backup Master (.xlsx)",
+                    data=output_master.getvalue(),
+                    file_name=f"Backup_Master_RAB_{datetime.now().strftime('%Y%m%d')}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    type="primary"
+                )
+            
+            with c_imp:
+                st.markdown("**2. Import Data Master**")
+                file_master = st.file_uploader("Upload File Backup Excel Master", type=['xlsx'], key="import_master")
+                if st.button("🚀 Jalankan Import", type="primary"):
+                    if file_master is not None:
+                        try:
+                            xls_master = pd.read_excel(file_master, sheet_name=None)
+                            if 'KRO' in xls_master: save_table(xls_master['KRO'], "rab_m_kro")
+                            if 'RO' in xls_master: save_table(xls_master['RO'], "rab_m_ro")
+                            if 'Komponen' in xls_master: save_table(xls_master['Komponen'], "rab_m_komp")
+                            if 'Sub_Komponen' in xls_master: save_table(xls_master['Sub_Komponen'], "rab_m_subkomp")
+                            if 'Akun' in xls_master: save_table(xls_master['Akun'], "rab_m_akun")
+                            if 'Pejabat' in xls_master: save_table(xls_master['Pejabat'], "rab_m_pejabat")
+                            st.success("🎉 Data Master berhasil di-import dan diperbarui!"); st.rerun()
+                        except Exception as e:
+                            st.error(f"Gagal memproses file. Pastikan format sheet sesuai: {e}")
+                    else:
+                        st.warning("⚠️ Pilih file Excel terlebih dahulu!")
+        
         sumber_master = st.radio("Pilih Kategori Master yang Ingin Diedit:", ["BOPTN", "PNBP"], horizontal=True)
         st.markdown("---")
 
