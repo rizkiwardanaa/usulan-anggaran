@@ -1,26 +1,19 @@
 import streamlit as st
 import pandas as pd
 import os
-import sqlite3
 from io import BytesIO
 from datetime import datetime
+from sqlalchemy import create_engine # Pengganti sqlite3
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-FILE_DB = os.path.join(BASE_DIR, "database_usulan_prodi.db")
+# --- KONEKSI KE CLOUD DATABASE ---
+DB_URL = st.secrets["DB_URL"]
+engine = create_engine(DB_URL)
 
-# =====================================================================
-# KUMPULAN FUNGSI BANTU (HELPER) & DATABASE
-# =====================================================================
-
+# --- FUNGSI DATABASE MASTER RAB (DITAMBAH SUMBER DANA) ---
 def load_table(table_name, default_cols):
-    """
-    Fungsi untuk memuat tabel dari database SQLite.
-    Jika tabel belum ada, fungsi ini akan membuat tabel baru beserta kolom defaultnya.
-    Khusus untuk tabel akun, akan otomatis ditambahkan kolom 'Sub_Komponen'.
-    """
-    conn = sqlite3.connect(FILE_DB)
     try:
-        df = pd.read_sql(f"SELECT * FROM {table_name}", conn)
+        # Membaca dari PostgreSQL
+        df = pd.read_sql(f"SELECT * FROM {table_name}", engine)
         for col in default_cols:
             if col not in df.columns:
                 if "Vol" in col or "Harga" in col or "Total" in col: df[col] = 1 if "Vol" in col else 0
@@ -30,18 +23,13 @@ def load_table(table_name, default_cols):
                 else: df[col] = "-"
     except:
         df = pd.DataFrame(columns=default_cols)
-        df.to_sql(table_name, conn, index=False)
-    conn.close()
+        df.to_sql(table_name, engine, index=False)
     return df
 
 def save_table(df, table_name):
-    """
-    Fungsi untuk menyimpan dataframe (tabel) kembali ke database SQLite.
-    Akan menimpa (replace) tabel lama dengan data yang baru.
-    """
-    conn = sqlite3.connect(FILE_DB)
-    df.to_sql(table_name, conn, if_exists="replace", index=False)
-    conn.close()
+    df.to_sql(table_name, engine, if_exists="replace", index=False)
+
+# ... (KODE KE BAWAHNYA TETAP SAMA PERSIS, DIMULAI DARI def format_rupiah(x): ) ...
 
 def format_rupiah(x):
     """
