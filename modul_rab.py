@@ -18,7 +18,7 @@ def load_table(table_name, default_cols):
     """
     conn = engine.connect()
     try:
-        df = pd.read_sql(f"SELECT * FROM {table_name}", engine)
+        df = pd.read_sql(f"SELECT * FROM {table_name}", conn)
         for col in default_cols:
             if col not in df.columns:
                 if "Vol" in col or "Harga" in col or "Total" in col: df[col] = 1 if "Vol" in col else 0
@@ -80,7 +80,8 @@ def get_vol_sat_combined(v1, s1, v2, s2):
 def generate_rkakl_html(df_utama, df_detail, kegiatan_code_map):
     """
     Fungsi generator buku rekapitulasi RKAKL berstandar universitas.
-    Menyusun hierarki KRO -> RO -> Komponen -> Sub-Komponen -> Judul Kegiatan (4 Digit) -> Akun Belanja -> Detail.
+    Menyusun hierarki dengan Pewarnaan (Color Coding) khusus:
+    Biru -> Kuning -> Oranye -> Hijau -> Putih
     """
     if df_utama.empty: return "<h3>Belum ada data RAB aktif yang dapat direkap ke buku RKAKL.</h3>"
     
@@ -95,10 +96,16 @@ def generate_rkakl_html(df_utama, df_detail, kegiatan_code_map):
         .bold { font-weight: bold; }
         table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 8.5pt; }
         th, td { border: 1px solid black; padding: 5px 6px; vertical-align: top; }
-        th { background-color: #f2f2f2; text-align: center; font-weight: bold; }
-        .kro-row { background-color: #e6f2ff; }
-        .ro-row { background-color: #f0f7ff; }
-        .keg-row { background-color: #fafafa; font-style: italic; }
+        th { background-color: #d9d9d9; text-align: center; font-weight: bold; }
+        
+        /* SKEMA WARNA HIERARKI RKAKL */
+        .kro-row { background-color: #d9e1f2; }   /* Biru Agak Gelap */
+        .ro-row { background-color: #e9edf4; }    /* Biru Muda */
+        .komp-row { background-color: #fff2cc; }  /* Kuning Pastel */
+        .sub-row { background-color: #fce4d6; }   /* Oranye Pastel */
+        .keg-row { background-color: #e2efda; }   /* Hijau Pastel (Kegiatan) */
+        .akun-row { background-color: #ffffff; }  /* Putih */
+        .detail-row { background-color: #ffffff; }
     </style></head><body>
     <h3 class="center" style="margin-bottom:2px;">LAPORAN RENCANA KERJA DAN ANGGARAN (RKAKL) FAKULTAS</h3>
     <h4 class="center" style="margin-top:0px; margin-bottom:20px;">FAKULTAS ILMU BUDAYA - UNIVERSITAS MULAWARMAN</h4>
@@ -133,31 +140,32 @@ def generate_rkakl_html(df_utama, df_detail, kegiatan_code_map):
                 k_komp, n_komp = split_kode(komp)
                 ids_komp = g_komp['ID_RAB'].tolist()
                 tot_komp = df_detail[df_detail['ID_RAB'].isin(ids_komp)]['Total_Biaya'].sum()
-                html += f"<tr class='bold'><td>{k_komp}</td><td>{n_komp}</td><td></td><td></td><td class='right'>{format_rupiah(tot_komp)}</td><td></td></tr>"
+                html += f"<tr class='komp-row bold'><td>{k_komp}</td><td>{n_komp}</td><td></td><td></td><td class='right'>{format_rupiah(tot_komp)}</td><td></td></tr>"
                 
                 for sub, g_sub in g_komp.groupby('Sub_Komponen'):
                     if sub and sub != "-":
                         k_sub, n_sub = split_kode(sub)
                         ids_sub = g_sub['ID_RAB'].tolist()
                         tot_sub = df_detail[df_detail['ID_RAB'].isin(ids_sub)]['Total_Biaya'].sum()
-                        html += f"<tr class='bold'><td>{k_sub}</td><td>{n_sub}</td><td></td><td></td><td class='right'>{format_rupiah(tot_sub)}</td><td></td></tr>"
+                        html += f"<tr class='sub-row bold'><td>{k_sub}</td><td>{n_sub}</td><td></td><td></td><td class='right'>{format_rupiah(tot_sub)}</td><td></td></tr>"
                     
-                    # LEVEL BARU: Loop Judul Kegiatan Utama di bawah Sub-Komponen
+                    # LEVEL JUDUL KEGIATAN (Dengan Title Case / Kapital Awal Kata)
                     for keg, g_keg in g_sub.groupby('Kegiatan'):
                         keg_code = kegiatan_code_map.get(keg, "0000")
+                        keg_title = keg.title() # Merubah ke format kapital di awal kata
                         ids_keg = g_keg['ID_RAB'].tolist()
                         tot_keg = df_detail[df_detail['ID_RAB'].isin(ids_keg)]['Total_Biaya'].sum()
-                        html += f"<tr class='keg-row bold'><td>{keg_code}</td><td style='padding-left:15px;'>[JUDUL KEGIATAN] {keg.upper()}</td><td></td><td></td><td class='right'>{format_rupiah(tot_keg)}</td><td></td></tr>"
+                        html += f"<tr class='keg-row bold'><td>{keg_code}</td><td style='padding-left:15px;'>{keg_title}</td><td></td><td></td><td class='right'>{format_rupiah(tot_keg)}</td><td></td></tr>"
                         
                         det_keg = df_detail[df_detail['ID_RAB'].isin(ids_keg)]
                         for akun, g_akun in det_keg.groupby('Akun_Belanja'):
                             k_akun, n_akun = split_kode(akun)
                             tot_akun = g_akun['Total_Biaya'].sum()
-                            html += f"<tr class='bold'><td>{k_akun}</td><td style='padding-left:30px;'>{n_akun}</td><td></td><td></td><td class='right'>{format_rupiah(tot_akun)}</td><td></td></tr>"
+                            html += f"<tr class='akun-row bold'><td>{k_akun}</td><td style='padding-left:30px;'>{n_akun}</td><td></td><td></td><td class='right'>{format_rupiah(tot_akun)}</td><td></td></tr>"
                             
                             for _, det in g_akun.iterrows():
                                 v_sat = get_vol_sat_combined(det['Vol_1'], det['Sat_1'], det['Vol_2'], det['Sat_2'])
-                                html += f"<tr><td></td><td style='padding-left:45px;'>- {det['Uraian']}</td><td class='center'>{v_sat}</td><td class='right'>{format_rupiah(det['Harga_Satuan'])}</td><td class='right'>{format_rupiah(det['Total_Biaya'])}</td><td></td></tr>"
+                                html += f"<tr class='detail-row'><td></td><td style='padding-left:45px;'>- {det['Uraian']}</td><td class='center'>{v_sat}</td><td class='right'>{format_rupiah(det['Harga_Satuan'])}</td><td class='right'>{format_rupiah(det['Total_Biaya'])}</td><td></td></tr>"
 
     html += f"""
         <tr class='bold' style='background-color:#d9d9d9;'>
@@ -190,6 +198,9 @@ def show_page():
     unique_kegiatans = sorted(df_rab_utama['Kegiatan'].unique()) if not df_rab_utama.empty else []
     kegiatan_code_map = {keg: f"{i+1:04d}" for i, keg in enumerate(unique_kegiatans)}
 
+    st.title("📄 Pengolah Dokumen RAB Universitas")
+    st.caption("Sistem Manajemen & Generator RAB Berjenjang dengan Pemisahan Kode Otomatis, Sumber Dana & Versi Anggaran.")
+
     tab_master, tab_buat, tab_daftar, tab_rekap = st.tabs(["🗂️ Master Database", "📝 Buat RAB Baru", "📂 Arsip & Versi RAB", "📊 Rekap RKAKL"])
 
     # -----------------------------------------------------------------
@@ -200,7 +211,7 @@ def show_page():
         with st.expander("⚡ Restore Database Master FIB (Otomatis)", expanded=False):
             st.warning("Klik tombol di bawah ini untuk memulihkan seluruh data standar KRO, RO, Komponen, dan 50+ Akun Belanja.")
             if st.button("🚀 Restore Data Standar FIB", type="primary"):
-                st.success("Struktur master siap dikonfigurasi!")
+                st.success("Struktur master siap dikonfigurasi! Gunakan script restore CSV jika diperlukan.")
 
         sumber_master = st.radio("Pilih Kategori Master yang Ingin Diedit:", ["BOPTN", "PNBP"], horizontal=True)
         st.markdown("---")
@@ -302,7 +313,6 @@ def show_page():
                 rab_satuan = col_u2.text_input("Satuan Ukur", placeholder="Contoh: Layanan / Bulan")
                 rab_tahun = col_u1.text_input("Tahun Anggaran", value="2027")
                 
-                # Pemilihan Versi RAB / Kategori Revisi Periode
                 rab_versi = col_u2.selectbox("Versi Anggaran (Periode Perencanaan)", ["Indikatif", "Definitif", "Revisi 1", "Revisi 2", "Revisi 3", "Revisi 4"])
 
             with st.container(border=True):
@@ -351,9 +361,8 @@ def show_page():
                     if not rab_kegiatan or valid_detail.empty or pilih_pejabat is None:
                         st.error("Gagal! Pastikan Nama Kegiatan, Rincian Item Belanja, dan Master Pejabat sudah lengkap.")
                     else:
-                        # Logika Proteksi Versi: Nonaktifkan (Is_Active = 0) seluruh versi lama dari Kegiatan ini
                         if not df_rab_utama.empty:
-                            df_rab_utama.loc[df_rab_utama["Kegiatan"] == rab_kegiatan.strip(), "Is_Active"] = 0
+                            df_rab_utama.loc[df_rab_utama["Kegiatan"].str.strip().str.lower() == rab_kegiatan.strip().lower(), "Is_Active"] = 0
                             
                         id_rab_baru = f"RAB-{datetime.now().strftime('%Y%m%d%H%M%S')}"
                         dt_pjb = df_m_pejabat.loc[pilih_pejabat]
@@ -363,7 +372,7 @@ def show_page():
                             "Sumber_Dana": sumber_buat, "KRO": pilih_kro, "RO": pilih_ro, "Komponen": pilih_komp, "Sub_Komponen": pilih_subkomp,
                             "Kegiatan": rab_kegiatan.strip(), "Sasaran": rab_sasaran, "Volume": rab_vol, "Satuan": rab_satuan, "Alokasi": rab_alokasi,
                             "Jabatan": dt_pjb['Jabatan'], "Nama_Pejabat": dt_pjb['Nama'], "NIP_Pejabat": dt_pjb['NIP'],
-                            "Versi_RAB": rab_versi, "Is_Active": 1 # Versi baru otomatis menjadi versi aktif final
+                            "Versi_RAB": rab_versi, "Is_Active": 1
                         }])
                         df_rab_utama = pd.concat([df_rab_utama, new_utama], ignore_index=True)
                         save_table(df_rab_utama, "rab_utama")
@@ -375,7 +384,7 @@ def show_page():
                         df_rab_detail = pd.concat([df_rab_detail, valid_detail[["ID_RAB", "Akun_Belanja", "Uraian", "Vol_1", "Sat_1", "Vol_2", "Sat_2", "Harga_Satuan", "Total_Biaya"]]], ignore_index=True)
                         save_table(df_rab_detail, "rab_detail")
                         st.toast("RAB Berhasil Diaktifkan!")
-                        st.success(f"✅ RAB '{rab_kegiatan}' Versi '{rab_versi}' Berhasil Diterbitkan!"); st.rerun()
+                        st.success(f"✅ RAB '{rab_kegiatan.title()}' Versi '{rab_versi}' Berhasil Diterbitkan!"); st.rerun()
 
     # -----------------------------------------------------------------
     # TAB 3: ARSIP & MANAJEMEN VERSI RAB
@@ -388,7 +397,9 @@ def show_page():
             st.markdown("Kelola riwayat revisi dan ganti acuan versi aktif yang akan ditarik ke dalam pembukuan laporan nasional RKAKL.")
             
             kegiatan_list = sorted(df_rab_utama['Kegiatan'].unique())
-            pilih_kegiatan = st.selectbox("1. Pilih Judul Kegiatan Utama:", kegiatan_list)
+            # Menambahkan Title Case pada pilihan
+            kegiatan_list_display = {k: k.title() for k in kegiatan_list}
+            pilih_kegiatan = st.selectbox("1. Pilih Judul Kegiatan Utama:", kegiatan_list, format_func=lambda x: kegiatan_list_display[x])
             
             df_kegiatan_terpilih = df_rab_utama[df_rab_utama['Kegiatan'] == pilih_kegiatan]
             versi_list = df_kegiatan_terpilih['Versi_RAB'].tolist()
@@ -401,7 +412,6 @@ def show_page():
             
             detail_terpilih = df_rab_detail[df_rab_detail["ID_RAB"] == id_rab_aktif]
             
-            # Panel Aktivasi Kontrol Versi Anggaran
             if status_aktif == 1:
                 st.success("✅ **STATUS VERSI: AKTIF (FINAL ACUAN)**. Versi ini yang sedang dihitung ke dalam Rekapitulasi Global RKAKL.")
             else:
@@ -422,18 +432,18 @@ def show_page():
             df_view['Volume & Satuan'] = df_view.apply(lambda r: get_vol_sat_combined(r['Vol_1'], r['Sat_1'], r['Vol_2'], r['Sat_2']), axis=1)
             
             keg_code_view = kegiatan_code_map.get(pilih_kegiatan, "0000")
-            st.markdown(f"**Identitas Kegiatan:** {keg_code_view} - {pilih_kegiatan.upper()}")
+            st.markdown(f"**Identitas Kegiatan:** {keg_code_view} - {pilih_kegiatan.title()}")
             st.markdown(f"**Klasifikasi Dokumen:** {head_terpilih['KRO'].iloc[0]} ➔ {head_terpilih['RO'].iloc[0]}")
             st.markdown(f"**Total Alokasi Anggaran ({s_dana}):** Rp {format_rupiah(detail_terpilih['Total_Biaya'].sum())}")
             st.dataframe(df_view[["Kode Akun", "Nama Akun Belanja", "Uraian", "Volume & Satuan", "Harga_Satuan", "Total_Biaya"]].style.format({"Harga_Satuan": format_rupiah, "Total_Biaya": format_rupiah}), hide_index=True, use_container_width=True)
             
-            # --- MESIN CETAK SATUAN DENGAN MATRIKS KODE KEGIATAN BARU ---
+            # --- MESIN CETAK DOKUMEN SATUAN (PDF) ---
             def export_pdf_rab(df_header, df_items, orientasi):
                 total_seluruh = df_items["Total_Biaya"].sum()
                 t_rab = df_header.get('Tahun', pd.Series(['2027'])).iloc[0]
                 s_dana = df_header.get('Sumber_Dana', pd.Series(['BOPTN'])).iloc[0]
-                keg_nama_full = df_header['Kegiatan'].iloc[0]
-                keg_kode_full = kegiatan_code_map.get(keg_nama_full, "0000")
+                keg_nama_full = df_header['Kegiatan'].iloc[0].title()
+                keg_kode_full = kegiatan_code_map.get(df_header['Kegiatan'].iloc[0], "0000")
                 
                 try: 
                     tobj = datetime.strptime(df_header['Tgl_Cetak'].iloc[0], "%Y-%m-%d")
@@ -448,21 +458,30 @@ def show_page():
                 <html><head><meta charset="utf-8">
                 <style>
                     @page {{ size: {page_rule}; margin: 10mm; }}
-                    body {{ font-family: 'Arial', sans-serif; font-size: 8.5pt; line-height: 1.2; }}
+                    body {{ font-family: 'Arial', sans-serif; font-size: 8.5pt; line-height: 1.2; color: #000; }}
                     .judul {{ text-align: center; font-weight: bold; font-size: 11pt; margin-bottom: 15px; }}
                     .tabel-meta td {{ padding: 1px 3px; font-size: 8.5pt; }}
                     .tabel-utama {{ width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 8pt; }}
                     .tabel-utama th, .tabel-utama td {{ border: 1px solid black; padding: 4px; }}
-                    .tabel-utama th {{ background-color: #f2f2f2; text-align: center; }}
+                    .tabel-utama th {{ background-color: #d9d9d9; text-align: center; font-weight: bold; }}
                     .text-right {{ text-align: right; }} .text-center {{ text-align: center; }} .bold {{ font-weight: bold; }}
                     .ttd-box {{ width: 220px; float: right; text-align: left; margin-top: 20px; margin-right: 15px; page-break-inside: avoid; }}
+                    
+                    /* WARNA HIERARKI PDF CETAK SATUAN */
+                    .kro-row {{ background-color: #d9e1f2; }}
+                    .ro-row {{ background-color: #e9edf4; }}
+                    .komp-row {{ background-color: #fff2cc; }}
+                    .sub-row {{ background-color: #fce4d6; }}
+                    .keg-row {{ background-color: #e2efda; }}
+                    .akun-row {{ background-color: #ffffff; }}
+                    .detail-row {{ background-color: #ffffff; }}
                 </style></head><body>
                 <div class="judul">RINCIAN ANGGARAN BIAYA (RAB) FAKULTAS ILMU BUDAYA<br>TAHUN ANGGARAN {t_rab}</div>
                 <table class="tabel-meta">
                     <tr><td class="bold">Kementerian/ Lembaga</td><td>:</td><td>(023) KEMENTERIAN PENDIDIKAN TINGGI, SAINS DAN TEKNOLOGI</td></tr>
                     <tr><td class="bold">Unit Eselon II/ Satker</td><td>:</td><td>(17) Dirjen Diktiristek / (677524) UNIVERSITAS MULAWARMAN</td></tr>
                     <tr><td class="bold">Sumber Dana</td><td>:</td><td>{s_dana}</td></tr>
-                    <tr><td class="bold">Kegiatan</td><td>:</td><td>{df_header['Kegiatan'].iloc[0]}</td></tr>
+                    <tr><td class="bold">Kegiatan</td><td>:</td><td>{df_header['Kegiatan'].iloc[0].title()}</td></tr>
                     <tr><td class="bold">Sasaran Kegiatan</td><td>:</td><td>{df_header['Sasaran'].iloc[0]}</td></tr>
                     <tr><td class="bold">Klasifikasi Rincian Output</td><td>:</td><td>{df_header['KRO'].iloc[0]}</td></tr>
                     <tr><td class="bold">Volume</td><td>:</td><td>{df_header['Volume'].iloc[0]}</td></tr>
@@ -472,20 +491,20 @@ def show_page():
                 <table class="tabel-utama">
                     <tr><th>Kode</th><th>Rincian Belanja</th><th>Volume & Satuan</th><th>Harga Satuan</th><th>Jumlah Biaya</th></tr>
                 """
-                for head_col, indent in [('RO', ""), ('Komponen', "  "), ('Sub_Komponen', "    ")]:
+                for head_col, indent, cls_row in [('RO', "", "ro-row"), ('Komponen', "  ", "komp-row"), ('Sub_Komponen', "    ", "sub-row")]:
                     if df_header[head_col].iloc[0] and str(df_header[head_col].iloc[0]).strip() not in ["", "-", "Tidak Ada Sub-Komponen"]:
                         k, u = split_kode(df_header[head_col].iloc[0])
-                        html += f"<tr><td class='bold'>{k}</td><td class='bold'>{indent}{u}</td><td></td><td></td><td class='bold text-right'>{format_rupiah(total_seluruh)}</td></tr>"
+                        html += f"<tr class='{cls_row} bold'><td>{k}</td><td>{indent}{u}</td><td></td><td></td><td class='right'>{format_rupiah(total_seluruh)}</td></tr>"
                 
-                # Menambahkan Baris Kode Uraian Kegiatan Otomatis 4 Digit
-                html += f"<tr><td class='bold'>{keg_kode_full}</td><td class='bold'>      {keg_nama_full}</td><td></td><td></td><td class='bold text-right'>{format_rupiah(total_seluruh)}</td></tr>"
+                # Menambahkan Baris Judul Kegiatan (Kode 4 Digit)
+                html += f"<tr class='keg-row bold'><td>{keg_kode_full}</td><td style='padding-left:15px;'>{keg_nama_full}</td><td></td><td></td><td class='right'>{format_rupiah(total_seluruh)}</td></tr>"
 
                 for akun, group_akun in df_items.groupby("Akun_Belanja"):
                     k_ak, u_ak = split_kode(akun)
-                    html += f"<tr><td class='bold'>{k_ak}</td><td class='bold'>        {u_ak}</td><td></td><td></td><td class='bold text-right'>{format_rupiah(group_akun['Total_Biaya'].sum())}</td></tr>"
+                    html += f"<tr class='akun-row bold'><td>{k_ak}</td><td style='padding-left:30px;'>{u_ak}</td><td></td><td></td><td class='right'>{format_rupiah(group_akun['Total_Biaya'].sum())}</td></tr>"
                     for _, r in group_akun.iterrows():
                         v_sat_str = get_vol_sat_combined(r['Vol_1'], r['Sat_1'], r['Vol_2'], r['Sat_2'])
-                        html += f"<tr><td></td><td>          - {r['Uraian']}</td><td class='text-center'>{v_sat_str}</td><td class='text-right'>{format_rupiah(r['Harga_Satuan'])}</td><td class='text-right'>{format_rupiah(r['Total_Biaya'])}</td></tr>"
+                        html += f"<tr class='detail-row'><td></td><td style='padding-left:45px;'>- {r['Uraian']}</td><td class='center'>{v_sat_str}</td><td class='right'>{format_rupiah(r['Harga_Satuan'])}</td><td class='right'>{format_rupiah(r['Total_Biaya'])}</td></tr>"
                 
                 html += f"""</table>
                 <div class="ttd-box">
@@ -498,7 +517,7 @@ def show_page():
             st.markdown("#### 🖨️ Cetak Dokumen Satuan")
             col_x1, col_x2 = st.columns([1, 4])
             with col_x1:
-                st.download_button("📑 Download PDF RAB (Web)", data=export_pdf_rab(head_terpilih, detail_terpilih, "Portrait").encode('utf-8'), file_name=f"RAB_{s_dana}_{pilih_kegiatan}_{pilih_versi}.html", mime="text/html")
+                st.download_button("📑 Download PDF RAB (Web)", data=export_pdf_rab(head_terpilih, detail_terpilih, "Portrait").encode('utf-8'), file_name=f"RAB_{s_dana}_{pilih_kegiatan.title()}_{pilih_versi}.html", mime="text/html")
             with col_x2:
                 if st.button("🗑️ Hapus Versi Ini", type="secondary"):
                     df_rab_utama = df_rab_utama[df_rab_utama["ID_RAB"] != id_rab_aktif]
@@ -513,15 +532,12 @@ def show_page():
         st.subheader("📊 Buku Rekapitulasi Kerja & Anggaran (RKAKL) Aktif")
         st.markdown("Laporan kompilasi komprehensif berstandar kementerian. Sistem otomatis mengeliminasi data arsip revisi lama dan **hanya menyusun RAB yang bertanda Aktif**.")
         
-        # Filter hanya menarik versi aktif final (Is_Active == 1)
         df_aktif = df_rab_utama[df_rab_utama['Is_Active'] == 1]
         
         if df_aktif.empty:
             st.info("Belum ada dokumen perencanaan anggaran dengan status aktif yang diterbitkan.")
         else:
             df_det_aktif = df_rab_detail[df_rab_detail['ID_RAB'].isin(df_aktif['ID_RAB'])]
-            
-            # Jalankan Kompilasi Penyusunan RKAKL beserta penomoran Judul Kegiatan 4 Digit otomatis
             html_rkakl = generate_rkakl_html(df_aktif, df_det_aktif, kegiatan_code_map)
             
             with st.container(border=True):
