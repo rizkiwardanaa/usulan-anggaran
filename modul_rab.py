@@ -68,7 +68,7 @@ def get_vol_sat_combined(v1, s1, v2, s2):
     return f"{v1_str} {s1_str} x {v2_str} {s2_str}"
 
 # =====================================================================
-# GENERATOR CETAK RAB SATUAN (EXCEL & PDF) - DIKEMBALIKAN!
+# GENERATOR CETAK RAB SATUAN (EXCEL & PDF)
 # =====================================================================
 def export_excel_rab(df_header, df_items, kegiatan_code_map):
     import openpyxl
@@ -401,7 +401,7 @@ def show_page():
     st.caption("Sistem Manajemen & Generator RAB Berjenjang dengan Pemisahan Kode Otomatis, Sumber Dana & Matrik Versi Anggaran.")
 
     list_tahun = sorted(df_rab_utama['Tahun'].unique().tolist() + [str(datetime.now().year + 1)], reverse=True)
-    list_tahun = list(dict.fromkeys(list_tahun)) # Remove duplicates
+    list_tahun = list(dict.fromkeys(list_tahun)) 
     tahun_aktif = st.sidebar.selectbox("📅 Pilih Tahun Anggaran Aktif:", list_tahun)
 
     tab_master, tab_buat, tab_daftar, tab_rekap, tab_matrik = st.tabs(["🗂️ Master", "📝 Buat / Edit RAB", "📂 Arsip & Versi", "📊 RKAKL Aktif", "⚖️ Matrik Perubahan"])
@@ -588,7 +588,6 @@ def show_page():
                 df_input_detail["Harga_Num"] = pd.to_numeric(df_input_detail["Harga Satuan"]).fillna(0)
                 total_rab_live = (df_input_detail["Vol_1_Num"] * df_input_detail["Vol_2_Num"] * df_input_detail["Harga_Num"]).sum()
                 
-                # Opsional: Kunci Pagu
                 c_pagu1, c_pagu2 = st.columns(2)
                 is_pagu_locked = c_pagu1.checkbox("🔒 Aktifkan Kunci Pagu Maksimal (Opsional)")
                 batas_pagu = c_pagu2.number_input("Batas Pagu (Rp)", min_value=0, value=int(total_rab_live)) if is_pagu_locked else 0
@@ -614,11 +613,9 @@ def show_page():
                         st.error("Gagal! Pastikan Nama Kegiatan, Rincian, dan Pejabat sudah terisi.")
                     else:
                         if is_edit_mode and def_versi == rab_versi:
-                            # Mode Overwrite (Timpa versi lama)
                             df_rab_utama = df_rab_utama[df_rab_utama["ID_RAB"] != st.session_state.edit_rab_id]
                             df_rab_detail = df_rab_detail[df_rab_detail["ID_RAB"] != st.session_state.edit_rab_id]
                         else:
-                            # Versi Baru -> Nonaktifkan versi lama di kegiatan yang sama
                             df_rab_utama.loc[(df_rab_utama["Kegiatan"].str.strip().str.lower() == rab_kegiatan.strip().lower()) & (df_rab_utama["Tahun"] == tahun_aktif), "Is_Active"] = 0
                             
                         id_rab_baru = f"RAB-{datetime.now().strftime('%Y%m%d%H%M%S')}"
@@ -645,7 +642,7 @@ def show_page():
                         st.success(f"✅ RAB '{rab_kegiatan.title()}' Versi '{rab_versi}' Tersimpan!"); st.rerun()
 
     # -----------------------------------------------------------------
-    # TAB 3: ARSIP & MANAJEMEN VERSI RAB
+    # TAB 3: ARSIP & MANAJEMEN VERSI RAB (DENGAN FIX BUG COPY MASSAL)
     # -----------------------------------------------------------------
     with tab_daftar:
         df_utama_thn = df_rab_utama[df_rab_utama['Tahun'] == tahun_aktif]
@@ -662,21 +659,25 @@ def show_page():
             pilih_keg_arsip = col_a2.selectbox("2. Pilih Kegiatan:", keg_list_aktif, format_func=lambda x: x.title())
             
             with st.expander(f"📋 Duplikasi Seluruh Kegiatan Versi '{pilih_v_arsip}' ke Versi Lain"):
-                st.write("Salin seluruh kegiatan pada versi ini ke versi baru sekaligus.")
+                st.write("Salin seluruh kegiatan pada versi ini ke versi baru sekaligus. Cocok digunakan sebelum membuat matrik revisi.")
                 target_versi = st.selectbox("Pilih Target Versi Baru:", ["Indikatif", "Definitif", "Revisi 1", "Revisi 2", "Revisi 3", "Revisi 4"])
                 if st.button(f"🚀 Salin Semua ke '{target_versi}'", type="primary"):
-                    for _, row_keg in df_v_terpilih.iterrows():
+                    for i, (_, row_keg) in enumerate(df_v_terpilih.iterrows()):
                         df_rab_utama.loc[(df_rab_utama["Kegiatan"] == row_keg['Kegiatan']) & (df_rab_utama["Tahun"] == tahun_aktif), "Is_Active"] = 0
                         new_row = row_keg.copy()
-                        new_id = f"RAB-{datetime.now().strftime('%Y%m%d%H%M%S')}-{new_row['Kegiatan'][:3]}"
+                        # DITAMBAHKAN %f (Microseconds) AGAR ID_RAB 100% UNIK WALAU DI LOOPING CEPAT
+                        new_id = f"RAB-{datetime.now().strftime('%Y%m%d%H%M%S%f')}-{i}"
                         new_row['ID_RAB'] = new_id
                         new_row['Versi_RAB'] = target_versi
                         new_row['Is_Active'] = 1
                         df_rab_utama = pd.concat([df_rab_utama, pd.DataFrame([new_row])], ignore_index=True)
                         
-                        det_keg_lama = df_rab_detail[df_rab_detail['ID_RAB'] == row_keg['ID_RAB']].copy()
+                        # FILTER SPECIFIC ID_RAB AGAR TIDAK BENGKAK
+                        old_id = row_keg['ID_RAB']
+                        det_keg_lama = df_rab_detail[df_rab_detail['ID_RAB'] == old_id].copy()
                         det_keg_lama['ID_RAB'] = new_id
                         df_rab_detail = pd.concat([df_rab_detail, det_keg_lama], ignore_index=True)
+                        
                     save_table(df_rab_utama, "rab_utama"); save_table(df_rab_detail, "rab_detail")
                     st.success(f"Berhasil menduplikasi ke {target_versi}!"); st.rerun()
 
@@ -707,7 +708,6 @@ def show_page():
                 st.markdown(f"**Identitas Kegiatan:** {kegiatan_code_map.get(pilih_keg_arsip, '0000')} - {pilih_keg_arsip.title()}")
                 st.dataframe(df_view[["Kode Akun", "Nama Akun Belanja", "Uraian", "Volume & Satuan", "Harga_Satuan", "Total_Biaya"]].style.format({"Harga_Satuan": format_rupiah, "Total_Biaya": format_rupiah}), hide_index=True, use_container_width=True)
 
-                # --- TOMBOL EXPORT DITAMBAHKAN KEMBALI DI SINI ---
                 st.markdown("#### 🖨️ Cetak Dokumen Satuan")
                 col_x1, col_x2, col_x3 = st.columns([1, 1, 2])
                 with col_x1:
