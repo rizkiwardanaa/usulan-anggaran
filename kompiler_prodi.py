@@ -1,6 +1,7 @@
 import streamlit as st
 import modul_kompiler
 import modul_rab
+import modul_tor  # Tambahan impor modul TOR pintar
 
 # ==========================================
 # KONFIGURASI HALAMAN UTAMA
@@ -40,26 +41,39 @@ if not st.session_state["logged_in"]:
     st.stop()
 
 # ==========================================
-# SIDEBAR & MENU NAVIGASI
+# SIDEBAR & MENU NAVIGASI (DINAMIS PER ROLE)
 # ==========================================
 with st.sidebar:
     st.header("Sistem Perencanaan")
     st.markdown(f"👤 **{st.session_state['nama_user']}**")
+    st.markdown("---")
     
-    menu_pilihan = "1. Dashboard Kompiler Usulan"
+    # Penyesuaian hak akses menu navigasi berdasarkan peran pengguna
     if st.session_state.get("role") == "admin":
-        st.markdown("---")
-        menu_pilihan = st.radio("📍 Navigasi Admin:", ["1. Dashboard Kompiler Usulan", "2. Pengolah Dokumen RAB"])
-        st.markdown("---")
+        menu_options = [
+            "1. Dashboard Kompiler Usulan", 
+            "2. Pengolah Dokumen RAB", 
+            "3. Generator TOR Otomatis"
+        ]
+    else:
+        menu_options = [
+            "1. Dashboard Kompiler Usulan", 
+            "2. Generator TOR Otomatis"
+        ]
+        
+    menu_pilihan = st.radio("📍 Navigasi Menu:", menu_options)
+    st.markdown("---")
         
     if st.button("🚪 Logout", type="primary"):
         st.session_state.update({"logged_in": False, "role": None, "nama_user": None, "username": None})
         st.rerun()
 
 # ==========================================
-# ROUTING HALAMAN
+# ROUTING HALAMAN (MENGGUNAKAN VALIDASI TEXT)
 # ==========================================
-if menu_pilihan == "1. Dashboard Kompiler Usulan":
+if "Dashboard Kompiler Usulan" in menu_pilihan:
     modul_kompiler.show_page()
-elif menu_pilihan == "2. Pengolah Dokumen RAB":
+elif "Pengolah Dokumen RAB" in menu_pilihan:
     modul_rab.show_page()
+elif "Generator TOR Otomatis" in menu_pilihan:
+    modul_tor.show_page()
