@@ -60,7 +60,8 @@ def generate_narasi_tor_json(kegiatan, total_anggaran, sasaran, list_belanja, po
     # TAMBAHKAN INI UNTUK DEBUGGING
     st.write(f"DEBUG: Kunci terbaca: {st.secrets.get('GEMINI_API_KEY', 'KOSONG')[:5]}...")
     try:
-        genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+        # Ubah dari st.secrets["GEMINI_API_KEY"] menjadi:
+        genai.configure(api_key=st.secrets["GEMINI_API_KEY_NEW"])
         
         # 1. Minta daftar model yang BENAR-BENAR TERSEDIA di akun Anda saat ini
         available_models = []
