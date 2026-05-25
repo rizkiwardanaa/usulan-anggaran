@@ -55,41 +55,43 @@ def load_active_rab():
     return df_utama, df_detail
 
 # --- FUNGSI AI GEMINI (JSON MODE) ---
+# --- FUNGSI AI GEMINI (JSON MODE) ---
 def generate_narasi_tor_json(kegiatan, total_anggaran, sasaran, list_belanja, poin_tambahan):
     # TAMBAHKAN INI UNTUK DEBUGGING
     st.write(f"DEBUG: Kunci terbaca: {st.secrets.get('GEMINI_API_KEY_NEW', 'KOSONG')[:5]}...")
+    
+    # 1. PINDAHKAN PROMPT KE SINI (Paling Atas)
+    prompt = f"""
+    Anda adalah perencana anggaran ahli di Fakultas Ilmu Budaya Universitas Mulawarman. 
+    Tugas Anda adalah menulis komponen isi untuk Term of Reference (TOR) berdasarkan data:
+    - Kegiatan: {kegiatan}, Sasaran: {sasaran}, Dana: {total_anggaran}, Item: {list_belanja}.
+    - Catatan: {poin_tambahan}
+    
+    ATURAN PENULISAN (SANGAT PENTING):
+    1. "dasar_hukum": Tuliskan 3-4 dasar hukum.
+    2. "gambaran_umum": Tuliskan dalam SATU paragraf yang komprehensif dan detail. Di dalam bagian ini, integrasikan juga poin-poin terkait Peraturan Menteri yang relevan dengan kegiatan ini agar lebih berbobot.
+    3. "penerima_manfaat", "metode_pelaksanaan", "tahapan_waktu": Masing-masing HARUS ditulis tepat dalam SATU PARAGRAF saja, namun buatlah mendetail, padat, dan tidak terlalu singkat.
+    4. "biaya_diperlukan": Tulis SATU PARAGRAF naratif yang mendetail bahwa total anggaran adalah Rp {total_anggaran} dari dana PNBP/FIB Unmul, tanpa rincian tabel.
+    
+    Kembalikan output JSON murni (tanpa markdown) dengan kunci persis seperti ini: 
+    "dasar_hukum", "gambaran_umum", "penerima_manfaat", "metode_pelaksanaan", "tahapan_waktu", "biaya_diperlukan".
+    """
+
     try:
         genai.configure(api_key=st.secrets["GEMINI_API_KEY_NEW"])
         
-        # 1. Minta daftar model yang BENAR-BENAR TERSEDIA di akun Anda saat ini
+        # Minta daftar model
         available_models = []
         for m in genai.list_models():
             if 'generateContent' in m.supported_generation_methods:
                 available_models.append(m.name)
         
-        # 2. Pilih model yang paling cocok secara otomatis
-        target_model = 'gemini-1.5-flash' # Model andalan saat ini
+        # Pilih model otomatis
+        target_model = 'gemini-1.5-flash'
         if f"models/{target_model}" not in available_models:
             target_model = available_models[0].replace("models/", "")
             
         model = genai.GenerativeModel(target_model)
-        
-        # 3. Lanjutkan proses prompt dengan instruksi detail paragraf
-        prompt = f"""
-        Anda adalah perencana anggaran ahli di Fakultas Ilmu Budaya Universitas Mulawarman. 
-        Tugas Anda adalah menulis komponen isi untuk Term of Reference (TOR) berdasarkan data:
-        - Kegiatan: {kegiatan}, Sasaran: {sasaran}, Dana: {total_anggaran}, Item: {list_belanja}.
-        - Catatan: {poin_tambahan}
-        
-        ATURAN PENULISAN (SANGAT PENTING):
-        1. "dasar_hukum": Tuliskan 3-4 dasar hukum.
-        2. "gambaran_umum": Tuliskan dalam SATU paragraf yang komprehensif dan detail. Di dalam bagian ini, integrasikan juga poin-poin terkait Peraturan Menteri yang relevan dengan kegiatan ini agar lebih berbobot.
-        3. "penerima_manfaat", "metode_pelaksanaan", "tahapan_waktu": Masing-masing HARUS ditulis tepat dalam SATU PARAGRAF saja, namun buatlah mendetail, padat, dan tidak terlalu singkat.
-        4. "biaya_diperlukan": Tulis SATU PARAGRAF naratif yang mendetail bahwa total anggaran adalah Rp {total_anggaran} dari dana PNBP/FIB Unmul, tanpa rincian tabel.
-        
-        Kembalikan output JSON murni (tanpa markdown) dengan kunci persis seperti ini: 
-        "dasar_hukum", "gambaran_umum", "penerima_manfaat", "metode_pelaksanaan", "tahapan_waktu", "biaya_diperlukan".
-        """
         
         respons = model.generate_content(prompt)
         teks_respons = respons.text.replace('```json', '').replace('```', '').strip()
@@ -100,7 +102,7 @@ def generate_narasi_tor_json(kegiatan, total_anggaran, sasaran, list_belanja, po
         try:
             st.warning("Mencoba model cadangan (gemini-pro)...")
             model = genai.GenerativeModel('gemini-pro')
-            respons = model.generate_content(prompt)
+            respons = model.generate_content(prompt) # Sekarang 'prompt' sudah pasti ada
             teks_respons = respons.text.replace('```json', '').replace('```', '').strip()
             return json.loads(teks_respons)
         except Exception as e2:
