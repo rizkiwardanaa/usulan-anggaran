@@ -10,8 +10,14 @@ import json
 from datetime import datetime
 
 # --- KONEKSI DATABASE ---
-DB_URL = st.secrets["DB_URL"]
-engine = create_engine(DB_URL, pool_size=5, max_overflow=10)
+# --- GANTI BAGIAN KONEKSI DATABASE DI modul_tor.py DENGAN INI ---
+@st.cache_resource
+def get_engine():
+    # Menggunakan cache_resource agar engine hanya dibuat sekali untuk seluruh aplikasi
+    return create_engine(st.secrets["DB_URL"], pool_size=5, max_overflow=10)
+
+engine = get_engine()
+# -------------------------------------------------------------
 
 def format_rupiah(x):
     try: return f"{float(x):,.0f}".replace(',', '.')
