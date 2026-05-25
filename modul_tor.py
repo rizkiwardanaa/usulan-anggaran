@@ -53,6 +53,9 @@ def load_active_rab():
 def generate_narasi_tor_json(kegiatan, total_anggaran, sasaran, list_belanja, poin_tambahan):
     try:
         genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+        
+        # 1. Gunakan model yang paling umum dan pasti tersedia
+        # 'gemini-1.5-flash' adalah model yang sangat cepat dan hemat kuota
         model = genai.GenerativeModel('gemini-1.5-flash')
         
         prompt = f"""
@@ -67,14 +70,13 @@ def generate_narasi_tor_json(kegiatan, total_anggaran, sasaran, list_belanja, po
         
         Kembalikan output murni dalam format JSON (tanpa blok kode markdown ```json) dengan kunci persis seperti ini:
         {{
-            "dasar_hukum": "Tuliskan 3-4 dasar hukum yang relevan dengan kegiatan ini (gunakan bullet symbol seperti '- Undang-Undang...').",
-            "gambaran_umum": "Tuliskan 2 paragraf gambaran umum mengapa kegiatan ini penting dan kaitannya dengan sasaran.",
+            "dasar_hukum": "Tuliskan 3-4 dasar hukum yang relevan dengan kegiatan ini.",
+            "gambaran_umum": "Tuliskan 2 paragraf gambaran umum mengapa kegiatan ini penting.",
             "penerima_manfaat": "Jelaskan siapa penerima manfaat dari kegiatan ini dalam 1 paragraf.",
             "metode_pelaksanaan": "Jelaskan bagaimana metode pelaksanaan kegiatan ini dalam 1 paragraf.",
             "tahapan_waktu": "Jelaskan tahapan dan waktu pelaksanaan secara singkat.",
-            "biaya_diperlukan": "Tulis 1 paragraf naratif yang menjelaskan bahwa total anggaran kegiatan ini adalah Rp {total_anggaran} yang bersumber dari dana FIB Unmul, tanpa menyebutkan rincian item belanja."
+            "biaya_diperlukan": "Tulis 1 paragraf naratif bahwa total anggaran adalah Rp {total_anggaran} dari dana FIB Unmul."
         }}
-        Tulis dengan bahasa Indonesia formal dan akademis.
         """
         
         respons = model.generate_content(prompt)
