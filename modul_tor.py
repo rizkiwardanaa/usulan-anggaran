@@ -66,7 +66,7 @@ def generate_narasi_tor_json(kegiatan, total_anggaran, sasaran, list_belanja, po
     - Catatan: {poin_tambahan}
     
     ATURAN PENULISAN (SANGAT PENTING):
-    1. "dasar_hukum": Tuliskan 3-4 dasar hukum.
+    1. "dasar_hukum": Tuliskan 4-6 dasar hukum.
     2. "gambaran_umum": Tuliskan dalam SATU paragraf yang komprehensif dan detail. Di dalam bagian ini, integrasikan juga poin-poin terkait Peraturan Menteri yang relevan dengan kegiatan ini agar lebih berbobot.
     3. "penerima_manfaat", "metode_pelaksanaan", "tahapan_waktu": Masing-masing HARUS ditulis tepat dalam SATU PARAGRAF saja, namun buatlah mendetail, padat, dan tidak terlalu singkat.
     4. "biaya_diperlukan": Tulis SATU PARAGRAF naratif yang mendetail bahwa total anggaran adalah Rp {total_anggaran} dari dana PNBP/FIB Unmul, tanpa rincian tabel.
