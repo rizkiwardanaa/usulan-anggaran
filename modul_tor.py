@@ -55,7 +55,6 @@ def load_active_rab():
     return df_utama, df_detail
 
 # --- FUNGSI AI GEMINI (JSON MODE) ---
-# --- FUNGSI AI GEMINI (JSON MODE) ---
 def generate_narasi_tor_json(kegiatan, total_anggaran, sasaran, list_belanja, poin_tambahan):
     st.write(f"DEBUG: Kunci terbaca: {st.secrets.get('GEMINI_API_KEY_NEW', 'KOSONG')[:5]}...")
     
@@ -66,7 +65,7 @@ def generate_narasi_tor_json(kegiatan, total_anggaran, sasaran, list_belanja, po
     - Catatan: {poin_tambahan}
     
     ATURAN PENULISAN (SANGAT PENTING):
-    1. "dasar_hukum": Tuliskan 4-6 dasar hukum.
+    1. "dasar_hukum": Kembalikan dalam bentuk ARRAY JSON (List) berisi 4-6 string dasar hukum yang terpisah.
     2. "gambaran_umum": Tuliskan dalam SATU paragraf yang komprehensif dan detail. Di dalam bagian ini, integrasikan juga poin-poin terkait Peraturan Menteri yang relevan dengan kegiatan ini agar lebih berbobot.
     3. "penerima_manfaat", "metode_pelaksanaan", "tahapan_waktu": Masing-masing HARUS ditulis tepat dalam SATU PARAGRAF saja, namun buatlah mendetail, padat, dan tidak terlalu singkat.
     4. "biaya_diperlukan": Tulis SATU PARAGRAF naratif yang mendetail bahwa total anggaran adalah Rp {total_anggaran} dari dana PNBP/FIB Unmul, tanpa rincian tabel.
@@ -88,10 +87,9 @@ def generate_narasi_tor_json(kegiatan, total_anggaran, sasaran, list_belanja, po
             st.error("❌ Gagal: Akun API Key Anda belum diberikan akses ke model AI apa pun oleh Google.")
             return None
             
-        # Tampilkan di layar model apa saja yang terdeteksi
-        st.info(f"🔍 Diagnostik: Model yang terdeteksi tersedia di server Anda: {', '.join(daftar_model)}")
+        st.info(f"🔍 Diagnostik: Model yang terdeteksi tersedia: {', '.join(daftar_model)}")
         
-        # 2. PILIH OTOMATIS: Cari model 'flash' atau 'pro', jika tidak ada, ambil urutan pertama
+        # 2. PILIH OTOMATIS
         model_terpilih = daftar_model[0]
         for m in daftar_model:
             if 'flash' in m:
@@ -101,39 +99,22 @@ def generate_narasi_tor_json(kegiatan, total_anggaran, sasaran, list_belanja, po
                 model_terpilih = m
                 
         nama_bersih = model_terpilih.replace("models/", "")
-        st.write(f"DEBUG: Mengeksekusi menggunakan model -> {nama_bersih}")
         
         # 3. EKSEKUSI
         try:
-            # Percobaan eksekusi dengan nama tanpa prefix
             model = genai.GenerativeModel(nama_bersih)
             respons = model.generate_content(prompt)
-            teks_respons = respons.text.replace('```json', '').replace('```', '').strip()
-            return json.loads(teks_respons)
         except Exception:
-            # Percobaan eksekusi cadangan dengan nama ber-prefix
             model = genai.GenerativeModel(model_terpilih)
             respons = model.generate_content(prompt)
-            teks_respons = respons.text.replace('```json', '').replace('```', '').strip()
-            return json.loads(teks_respons)
+            
+        teks_respons = respons.text.replace('```json', '').replace('```', '').strip()
+        return json.loads(teks_respons)
             
     except Exception as e:
         st.error(f"❌ Gagal total menghubungi server AI. Detail Error: {e}")
         return None
-        teks_respons = respons.text.replace('```json', '').replace('```', '').strip()
-        return json.loads(teks_respons)
-        
-    except Exception as e:
-        # Logika Cadangan
-        try:
-            st.warning("Mencoba model cadangan (gemini-pro)...")
-            model = genai.GenerativeModel('gemini-pro')
-            respons = model.generate_content(prompt) # Sekarang 'prompt' sudah pasti ada
-            teks_respons = respons.text.replace('```json', '').replace('```', '').strip()
-            return json.loads(teks_respons)
-        except Exception as e2:
-            st.error(f"Gagal total menghubungi Gemini. Error: {e2}")
-            return None
+
 
 # --- BUILDER MICROSOFT WORD (.DOCX) ---
 def build_docx(meta, narasi):
@@ -189,7 +170,20 @@ def build_docx(meta, narasi):
     # BAB A
     doc.add_paragraph("A. Latar Belakang").bold = True
     doc.add_paragraph("1. Dasar Hukum").bold = True
-    doc.add_paragraph(narasi.get('dasar_hukum', ''))
+    
+    # RENDER DASAR HUKUM DENGAN BULLET
+    dh_data = narasi.get('dasar_hukum', [])
+    if isinstance(dh_data, list):
+        for item in dh_data:
+            p_bullet = doc.add_paragraph()
+            p_bullet.paragraph_format.left_indent = Cm(0.7)
+            p_bullet.add_run(f"•  {item}")
+    else:
+        # Jika fallback string
+        for item in str(dh_data).split('\n'):
+            p_bullet = doc.add_paragraph()
+            p_bullet.paragraph_format.left_indent = Cm(0.7)
+            p_bullet.add_run(f"•  {item.strip()}")
     
     doc.add_paragraph("2. Gambaran Umum").bold = True
     doc.add_paragraph(narasi.get('gambaran_umum', ''))
@@ -210,20 +204,41 @@ def build_docx(meta, narasi):
     doc.add_paragraph("D. Biaya Yang Diperlukan").bold = True
     doc.add_paragraph(narasi.get('biaya_diperlukan', ''))
 
-    # TANDA TANGAN
+    # TANDA TANGAN (FORMAT BARU)
     doc.add_paragraph("\n")
-    p_ttd = doc.add_paragraph(f"Samarinda, {meta['tgl_cetak']}\nPenanggung Jawab Kegiatan\n\n\n\n")
+    p_ttd = doc.add_paragraph()
     p_ttd.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-    r_nama = p_ttd.add_run(f"({meta['ketua']})")
+    
+    # Baris 1 & 2: Lokasi, Jabatan
+    p_ttd.add_run(f"Samarinda, {meta['tgl_cetak']}\n")
+    p_ttd.add_run(f"Penanggung Jawab Kegiatan\n\n\n\n")
+    
+    # Baris 3: Nama (Bold)
+    r_nama = p_ttd.add_run(f"{meta['ketua']}\n")
     r_nama.bold = True
+    
+    # Baris 4: NIP (Tanpa Bold)
+    if meta['nip']:
+        r_nip = p_ttd.add_run(f"NIP {meta['nip']}")
+        r_nip.bold = False
     
     output = BytesIO()
     doc.save(output)
     return output.getvalue()
 
+
 # --- BUILDER PDF / HTML PRINT-READY ---
 def generate_tor_html(meta, narasi):
-    # CSS margin menggunakan satuan mm (20mm = 2cm, 22mm = 2.2cm)
+    # Format Dasar Hukum menjadi tag list HTML
+    dh_data = narasi.get('dasar_hukum', [])
+    if isinstance(dh_data, list):
+        dh_html = "<ul style='margin-top: 0; padding-left: 20px;'>" + "".join(f"<li>{item}</li>" for item in dh_data) + "</ul>"
+    else:
+        dh_html = str(dh_data).replace('\n', '<br>')
+
+    # Format NIP jika ada
+    nip_html = f"<br>NIP {meta['nip']}" if meta['nip'] else ""
+
     html = f"""
     <!DOCTYPE html>
     <html><head><meta charset="utf-8">
@@ -265,7 +280,7 @@ def generate_tor_html(meta, narasi):
     
     <div class="bab-title">A. Latar Belakang</div>
     <div class="sub-bab">1. Dasar Hukum</div>
-    <div class="isi-sub-text">{narasi.get('dasar_hukum', '')}</div>
+    <div class="isi-sub-text">{dh_html}</div>
     <div class="sub-bab">2. Gambaran Umum</div>
     <div class="isi-sub-text">{narasi.get('gambaran_umum', '')}</div>
     
@@ -284,7 +299,7 @@ def generate_tor_html(meta, narasi):
     <div class="ttd-box">
         Samarinda, {meta['tgl_cetak']}<br>
         Penanggung Jawab Kegiatan<br><br><br><br><br>
-        <b>({meta['ketua']})</b>
+        <b>{meta['ketua']}</b>{nip_html}
     </div>
     </body></html>
     """
@@ -322,9 +337,13 @@ def show_page():
         
         st.markdown("---")
         st.subheader("Informasi Operasional & Penanggung Jawab")
-        col1, col2 = st.columns(2)
-        in_ketua = col1.text_input("Nama Penanggung Jawab / Pejabat", value=df_keg_utama['Nama_Pejabat'])
-        in_tgl_cetak = col2.text_input("Tanggal Cetak Dokumen", value=df_keg_utama['Tanggal'][:10])
+        
+        # PENAMBAHAN KOLOM INPUT NIP
+        col1, col2, col3 = st.columns(3)
+        in_ketua = col1.text_input("Nama Pejabat", value=df_keg_utama['Nama_Pejabat'])
+        in_nip = col2.text_input("NIP", value="", placeholder="Contoh: 19800101...")
+        in_tgl_cetak = col3.text_input("Tanggal Cetak", value=df_keg_utama['Tanggal'][:10])
+        
         in_poin = st.text_area("Catatan Latar Belakang untuk AI (Opsional)", placeholder="Ketik ide/alasan singkat mengapa kegiatan ini butuh dilaksanakan agar AI bisa merangkainya.")
 
     # BUILD METADATA DICTIONARY
@@ -346,6 +365,7 @@ def show_page():
         'vol': df_keg_utama['Volume'],
         'sat': df_keg_utama['Satuan'],
         'ketua': in_ketua,
+        'nip': in_nip, # Simpan NIP ke meta
         'tgl_cetak': in_tgl_cetak,
         'keg_title': pilih_keg.title()
     }
@@ -375,8 +395,13 @@ def show_page():
             st.markdown("### 📝 Editor Draft TOR")
             st.caption("Anda dapat menyunting langsung teks di bawah ini sebelum dicetak.")
             
+            # Konversi array dasar hukum ke teks baris baru agar mudah diedit
+            dh_val = st.session_state.tor_json.get('dasar_hukum', [])
+            if isinstance(dh_val, list):
+                dh_val = "\n".join(dh_val)
+            
             with st.form("form_edit_tor"):
-                edit_dh = st.text_area("A.1. Dasar Hukum", value=st.session_state.tor_json.get('dasar_hukum', ''), height=150)
+                edit_dh = st.text_area("A.1. Dasar Hukum (Tiap baris akan jadi 1 bullet)", value=dh_val, height=150)
                 edit_gu = st.text_area("A.2. Gambaran Umum", value=st.session_state.tor_json.get('gambaran_umum', ''), height=200)
                 edit_pm = st.text_area("B. Penerima Manfaat", value=st.session_state.tor_json.get('penerima_manfaat', ''), height=150)
                 edit_mp = st.text_area("C.1. Metode Pelaksanaan", value=st.session_state.tor_json.get('metode_pelaksanaan', ''), height=150)
@@ -384,9 +409,16 @@ def show_page():
                 edit_bd = st.text_area("D. Biaya Yang Diperlukan", value=st.session_state.tor_json.get('biaya_diperlukan', ''), height=150)
                 
                 if st.form_submit_button("Simpan Perubahan Draft", type="primary"):
+                    # Konversi kembali teks dasar hukum ke dalam list/array
+                    dh_list = [x.strip() for x in edit_dh.split('\n') if x.strip()]
+                    
                     st.session_state.tor_json = {
-                        'dasar_hukum': edit_dh, 'gambaran_umum': edit_gu, 'penerima_manfaat': edit_pm,
-                        'metode_pelaksanaan': edit_mp, 'tahapan_waktu': edit_tw, 'biaya_diperlukan': edit_bd
+                        'dasar_hukum': dh_list, 
+                        'gambaran_umum': edit_gu, 
+                        'penerima_manfaat': edit_pm,
+                        'metode_pelaksanaan': edit_mp, 
+                        'tahapan_waktu': edit_tw, 
+                        'biaya_diperlukan': edit_bd
                     }
                     st.success("Perubahan tersimpan! Lanjut ke tab 3 untuk mencetak.")
 
