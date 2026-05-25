@@ -22,6 +22,17 @@ def format_rupiah(x):
     try: return f"{float(x):,.0f}".replace(',', '.')
     except (ValueError, TypeError): return x
 
+def format_tgl_indo(tgl_str):
+    if not tgl_str: return ""
+    try:
+        tgl_clean = str(tgl_str)[:10]
+        dt = datetime.strptime(tgl_clean, "%Y-%m-%d")
+        bulan_indo = ["", "Januari", "Februari", "Maret", "April", "Mei", "Juni", 
+                      "Juli", "Agustus", "September", "Oktober", "November", "Desember"]
+        return f"{dt.day} {bulan_indo[dt.month]} {dt.year}"
+    except:
+        return str(tgl_str)[:10]
+
 def split_kode(teks):
     s = str(teks).strip()
     if " - " in s:
@@ -77,7 +88,6 @@ def generate_narasi_tor_json(kegiatan, total_anggaran, sasaran, list_belanja, po
     try:
         genai.configure(api_key=st.secrets["GEMINI_API_KEY_NEW"])
         
-        # 1. TANYA GOOGLE: Minta menu model yang tersedia hari ini
         daftar_model = []
         for m in genai.list_models():
             if 'generateContent' in m.supported_generation_methods:
@@ -89,7 +99,6 @@ def generate_narasi_tor_json(kegiatan, total_anggaran, sasaran, list_belanja, po
             
         st.info(f"🔍 Diagnostik: Model yang terdeteksi tersedia: {', '.join(daftar_model)}")
         
-        # 2. PILIH OTOMATIS
         model_terpilih = daftar_model[0]
         for m in daftar_model:
             if 'flash' in m:
@@ -100,7 +109,6 @@ def generate_narasi_tor_json(kegiatan, total_anggaran, sasaran, list_belanja, po
                 
         nama_bersih = model_terpilih.replace("models/", "")
         
-        # 3. EKSEKUSI
         try:
             model = genai.GenerativeModel(nama_bersih)
             respons = model.generate_content(prompt)
@@ -171,7 +179,6 @@ def build_docx(meta, narasi):
     doc.add_paragraph("A. Latar Belakang").bold = True
     doc.add_paragraph("1. Dasar Hukum").bold = True
     
-    # RENDER DASAR HUKUM DENGAN BULLET
     dh_data = narasi.get('dasar_hukum', [])
     if isinstance(dh_data, list):
         for item in dh_data:
@@ -179,7 +186,6 @@ def build_docx(meta, narasi):
             p_bullet.paragraph_format.left_indent = Cm(0.7)
             p_bullet.add_run(f"•  {item}")
     else:
-        # Jika fallback string
         for item in str(dh_data).split('\n'):
             p_bullet = doc.add_paragraph()
             p_bullet.paragraph_format.left_indent = Cm(0.7)
@@ -204,20 +210,17 @@ def build_docx(meta, narasi):
     doc.add_paragraph("D. Biaya Yang Diperlukan").bold = True
     doc.add_paragraph(narasi.get('biaya_diperlukan', ''))
 
-    # TANDA TANGAN (FORMAT BARU)
+    # TANDA TANGAN (DEKAN)
     doc.add_paragraph("\n")
     p_ttd = doc.add_paragraph()
     p_ttd.alignment = WD_ALIGN_PARAGRAPH.RIGHT
     
-    # Baris 1 & 2: Lokasi, Jabatan
     p_ttd.add_run(f"Samarinda, {meta['tgl_cetak']}\n")
-    p_ttd.add_run(f"Penanggung Jawab Kegiatan\n\n\n\n")
+    p_ttd.add_run(f"Dekan\n\n\n\n")
     
-    # Baris 3: Nama (Bold)
     r_nama = p_ttd.add_run(f"{meta['ketua']}\n")
     r_nama.bold = True
     
-    # Baris 4: NIP (Tanpa Bold)
     if meta['nip']:
         r_nip = p_ttd.add_run(f"NIP {meta['nip']}")
         r_nip.bold = False
@@ -229,14 +232,12 @@ def build_docx(meta, narasi):
 
 # --- BUILDER PDF / HTML PRINT-READY ---
 def generate_tor_html(meta, narasi):
-    # Format Dasar Hukum menjadi tag list HTML
     dh_data = narasi.get('dasar_hukum', [])
     if isinstance(dh_data, list):
         dh_html = "<ul style='margin-top: 0; padding-left: 20px;'>" + "".join(f"<li>{item}</li>" for item in dh_data) + "</ul>"
     else:
         dh_html = str(dh_data).replace('\n', '<br>')
 
-    # Format NIP jika ada
     nip_html = f"<br>NIP {meta['nip']}" if meta['nip'] else ""
 
     html = f"""
@@ -298,7 +299,7 @@ def generate_tor_html(meta, narasi):
     
     <div class="ttd-box">
         Samarinda, {meta['tgl_cetak']}<br>
-        Penanggung Jawab Kegiatan<br><br><br><br><br>
+        Dekan<br><br><br><br><br>
         <b>{meta['ketua']}</b>{nip_html}
     </div>
     </body></html>
@@ -338,15 +339,17 @@ def show_page():
         st.markdown("---")
         st.subheader("Informasi Operasional & Penanggung Jawab")
         
-        # PENAMBAHAN KOLOM INPUT NIP
         col1, col2, col3 = st.columns(3)
-        in_ketua = col1.text_input("Nama Pejabat", value=df_keg_utama['Nama_Pejabat'])
-        in_nip = col2.text_input("NIP", value="", placeholder="Contoh: 19800101...")
-        in_tgl_cetak = col3.text_input("Tanggal Cetak", value=df_keg_utama['Tanggal'][:10])
+        # SET DEFAULT VALUE NAMA & NIP SESUAI PERMINTAAN
+        in_ketua = col1.text_input("Nama Pejabat", value="Prof. Dr. M. Bahri Arifin, M.Hum.")
+        in_nip = col2.text_input("NIP", value="196211271989031004")
+        
+        # OTOMATIS KONVERSI FORMAT TANGGAL KE INDONESIA
+        tgl_default = format_tgl_indo(df_keg_utama['Tanggal'])
+        in_tgl_cetak = col3.text_input("Tanggal Cetak", value=tgl_default)
         
         in_poin = st.text_area("Catatan Latar Belakang untuk AI (Opsional)", placeholder="Ketik ide/alasan singkat mengapa kegiatan ini butuh dilaksanakan agar AI bisa merangkainya.")
 
-    # BUILD METADATA DICTIONARY
     kro_code, kro_name = split_kode(df_keg_utama['KRO'])
     ro_code, ro_name = split_kode(df_keg_utama['RO'])
     
@@ -365,7 +368,7 @@ def show_page():
         'vol': df_keg_utama['Volume'],
         'sat': df_keg_utama['Satuan'],
         'ketua': in_ketua,
-        'nip': in_nip, # Simpan NIP ke meta
+        'nip': in_nip, 
         'tgl_cetak': in_tgl_cetak,
         'keg_title': pilih_keg.title()
     }
@@ -395,7 +398,6 @@ def show_page():
             st.markdown("### 📝 Editor Draft TOR")
             st.caption("Anda dapat menyunting langsung teks di bawah ini sebelum dicetak.")
             
-            # Konversi array dasar hukum ke teks baris baru agar mudah diedit
             dh_val = st.session_state.tor_json.get('dasar_hukum', [])
             if isinstance(dh_val, list):
                 dh_val = "\n".join(dh_val)
@@ -409,7 +411,6 @@ def show_page():
                 edit_bd = st.text_area("D. Biaya Yang Diperlukan", value=st.session_state.tor_json.get('biaya_diperlukan', ''), height=150)
                 
                 if st.form_submit_button("Simpan Perubahan Draft", type="primary"):
-                    # Konversi kembali teks dasar hukum ke dalam list/array
                     dh_list = [x.strip() for x in edit_dh.split('\n') if x.strip()]
                     
                     st.session_state.tor_json = {
