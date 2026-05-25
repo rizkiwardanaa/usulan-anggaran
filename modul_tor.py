@@ -56,36 +56,38 @@ def load_active_rab():
 
 # --- FUNGSI AI GEMINI (JSON MODE) ---
 def generate_narasi_tor_json(kegiatan, total_anggaran, sasaran, list_belanja, poin_tambahan):
-    # Cek koneksi key di terminal log
+    # TAMBAHKAN INI UNTUK DEBUGGING
     st.write(f"DEBUG: Kunci terbaca: {st.secrets.get('GEMINI_API_KEY_NEW', 'KOSONG')[:5]}...")
     try:
         genai.configure(api_key=st.secrets["GEMINI_API_KEY_NEW"])
         
+        # 1. Minta daftar model yang BENAR-BENAR TERSEDIA di akun Anda saat ini
         available_models = []
         for m in genai.list_models():
             if 'generateContent' in m.supported_generation_methods:
                 available_models.append(m.name)
         
-        target_model = 'gemini-1.5-flash'
+        # 2. Pilih model yang paling cocok secara otomatis
+        target_model = 'gemini-1.5-flash' # Model andalan saat ini
         if f"models/{target_model}" not in available_models:
             target_model = available_models[0].replace("models/", "")
             
         model = genai.GenerativeModel(target_model)
         
+        # 3. Lanjutkan proses prompt dengan instruksi detail paragraf
         prompt = f"""
         Anda adalah perencana anggaran ahli di Fakultas Ilmu Budaya Universitas Mulawarman. 
         Tugas Anda adalah menulis komponen isi untuk Term of Reference (TOR) berdasarkan data:
         - Kegiatan: {kegiatan}, Sasaran: {sasaran}, Dana: {total_anggaran}, Item: {list_belanja}.
+        - Catatan: {poin_tambahan}
         
         ATURAN PENULISAN (SANGAT PENTING):
-        1. "dasar_hukum": Tuliskan 3-4 dasar hukum dengan format bullet.
-        2. "gambaran_umum": Wajib berupa SATU PARAGRAF PANJANG yang mendetail. Elaborasi alasan kegiatan ini penting. Di dalam paragraf ini, rangkai juga referensi mengenai Peraturan Menteri Pendidikan atau perundang-undangan relevan ke dalam bentuk kalimat yang mengalir (bukan poin/bullet).
-        3. "penerima_manfaat": Wajib berupa SATU PARAGRAF yang padat dan mendetail. Uraikan dengan jelas siapa saja yang merasakan manfaat secara langsung maupun tidak langsung.
-        4. "metode_pelaksanaan": Wajib berupa SATU PARAGRAF yang mendetail dan komprehensif, hindari penjelasan yang terlalu singkat.
-        5. "tahapan_waktu": Wajib berupa SATU PARAGRAF naratif yang mendetail mengenai alur dari persiapan hingga pelaporan.
-        6. "biaya_diperlukan": Wajib berupa SATU PARAGRAF mendetail yang menegaskan bahwa total anggaran kegiatan sebesar Rp {total_anggaran} bersumber dari dana FIB Unmul, dikelola sesuai standar efisiensi, tanpa merinci item per item belanja.
+        1. "dasar_hukum": Tuliskan 3-4 dasar hukum.
+        2. "gambaran_umum": Tuliskan dalam SATU paragraf yang komprehensif dan detail. Di dalam bagian ini, integrasikan juga poin-poin terkait Peraturan Menteri yang relevan dengan kegiatan ini agar lebih berbobot.
+        3. "penerima_manfaat", "metode_pelaksanaan", "tahapan_waktu": Masing-masing HARUS ditulis tepat dalam SATU PARAGRAF saja, namun buatlah mendetail, padat, dan tidak terlalu singkat.
+        4. "biaya_diperlukan": Tulis SATU PARAGRAF naratif yang mendetail bahwa total anggaran adalah Rp {total_anggaran} dari dana PNBP/FIB Unmul, tanpa rincian tabel.
         
-        Kembalikan output JSON (tanpa markdown) dengan kunci: 
+        Kembalikan output JSON murni (tanpa markdown) dengan kunci persis seperti ini: 
         "dasar_hukum", "gambaran_umum", "penerima_manfaat", "metode_pelaksanaan", "tahapan_waktu", "biaya_diperlukan".
         """
         
@@ -94,27 +96,27 @@ def generate_narasi_tor_json(kegiatan, total_anggaran, sasaran, list_belanja, po
         return json.loads(teks_respons)
         
     except Exception as e:
+        # Logika Cadangan
         try:
-            st.warning("Model utama gagal, mencoba model cadangan (gemini-pro)...")
+            st.warning("Mencoba model cadangan (gemini-pro)...")
             model = genai.GenerativeModel('gemini-pro')
             respons = model.generate_content(prompt)
             teks_respons = respons.text.replace('```json', '').replace('```', '').strip()
             return json.loads(teks_respons)
         except Exception as e2:
-            st.error(f"Gagal total menghubungi Gemini. Pastikan API Key benar. Error: {e2}")
+            st.error(f"Gagal total menghubungi Gemini. Error: {e2}")
             return None
 
 # --- BUILDER MICROSOFT WORD (.DOCX) ---
 def build_docx(meta, narasi):
     doc = Document()
     
-    # SETTING MARGIN (Top: 2cm, Bottom: 2cm, Left: 2.2cm, Right: 2.2cm, Gutter: 0)
-    sections = doc.sections
-    for section in sections:
+    # SETUP MARGIN CUSTOM (Top/Bot 2cm, L/R 2.20cm, Gutter 0)
+    for section in doc.sections:
         section.top_margin = Cm(2.0)
         section.bottom_margin = Cm(2.0)
-        section.left_margin = Cm(2.2)
-        section.right_margin = Cm(2.2)
+        section.left_margin = Cm(2.20)
+        section.right_margin = Cm(2.20)
         section.gutter = Cm(0)
     
     # KOP & JUDUL
@@ -124,13 +126,12 @@ def build_docx(meta, narasi):
     r_judul.bold = True
     r_judul.font.size = Pt(12)
     
-    # SUB JUDUL KEGIATAN
-    r_subjudul = p_judul.add_run(f"{str(meta['keg_title']).upper()}")
+    # SUB JUDUL (NAMA KEGIATAN)
+    r_subjudul = p_judul.add_run(f"{meta['keg_title'].upper()}\n")
     r_subjudul.bold = True
     r_subjudul.font.size = Pt(12)
     
     # METADATA TABLE (Borderless)
-    doc.add_paragraph() # Spasi sebelum tabel
     table = doc.add_table(rows=0, cols=3)
     for row in table.rows:
         row.cells[0].width = Inches(2.0)
@@ -194,17 +195,15 @@ def build_docx(meta, narasi):
 
 # --- BUILDER PDF / HTML PRINT-READY ---
 def generate_tor_html(meta, narasi):
+    # CSS margin menggunakan satuan mm (20mm = 2cm, 22mm = 2.2cm)
     html = f"""
     <!DOCTYPE html>
     <html><head><meta charset="utf-8">
     <style>
-        @page {{ 
-            size: A4 portrait; 
-            margin: 2cm 2.2cm 2cm 2.2cm; 
-        }}
+        @page {{ size: A4 portrait; margin: 20mm 22mm 20mm 22mm; }}
         body {{ font-family: 'Arial', sans-serif; font-size: 11pt; line-height: 1.5; color: #000; text-align: justify; }}
-        .center {{ text-align: center; font-weight: bold; font-size: 12pt; margin-bottom: 2px; }}
-        .sub-center {{ text-align: center; font-weight: bold; font-size: 12pt; margin-bottom: 20px; }}
+        .center {{ text-align: center; font-weight: bold; font-size: 12pt; margin-bottom: 5px; }}
+        .subtitle {{ text-align: center; font-weight: bold; font-size: 12pt; margin-bottom: 20px; text-transform: uppercase; }}
         table {{ width: 100%; border-collapse: collapse; margin-bottom: 20px; }}
         td {{ padding: 2px 4px; vertical-align: top; }}
         .label {{ width: 35%; }}
@@ -216,8 +215,9 @@ def generate_tor_html(meta, narasi):
         .isi-sub-text {{ margin-top: 0px; margin-bottom: 10px; padding-left: 30px; white-space: pre-wrap; }}
         .ttd-box {{ width: 250px; float: right; text-align: left; margin-top: 40px; }}
     </style></head><body>
+    
     <div class="center">KERANGKA ACUAN KERJA/TERM OF REFERENCE</div>
-    <div class="sub-center">{str(meta['keg_title']).upper()}</div>
+    <div class="subtitle">{meta['keg_title']}</div>
     
     <table>
         <tr><td class="label">Kementerian Negara/Lembaga</td><td class="titik">:</td><td class="value">(023) Kementerian Pendidikan, Kebudayaan, Riset dan Teknologi</td></tr>
@@ -353,7 +353,7 @@ def show_page():
                 edit_pm = st.text_area("B. Penerima Manfaat", value=st.session_state.tor_json.get('penerima_manfaat', ''), height=150)
                 edit_mp = st.text_area("C.1. Metode Pelaksanaan", value=st.session_state.tor_json.get('metode_pelaksanaan', ''), height=150)
                 edit_tw = st.text_area("C.2. Tahapan dan Waktu Pelaksanaan", value=st.session_state.tor_json.get('tahapan_waktu', ''), height=150)
-                edit_bd = st.text_area("D. Biaya Yang Diperlukan", value=st.session_state.tor_json.get('biaya_diperlukan', ''), height=100)
+                edit_bd = st.text_area("D. Biaya Yang Diperlukan", value=st.session_state.tor_json.get('biaya_diperlukan', ''), height=150)
                 
                 if st.form_submit_button("Simpan Perubahan Draft", type="primary"):
                     st.session_state.tor_json = {
