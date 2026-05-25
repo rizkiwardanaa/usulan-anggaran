@@ -61,7 +61,7 @@ def generate_narasi_tor_json(kegiatan, total_anggaran, sasaran, list_belanja, po
         genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
         
         # 1. Gunakan model yang paling umum dan pasti tersedia
-        # 'gemini-1.5-flash' adalah model yang sangat cepat dan hemat kuota
+        # 'gemini-3.1-flash-lite' adalah model yang sangat cepat dan hemat kuota
         model = genai.GenerativeModel('gemini-3.1-flash-lite')
         
         prompt = f"""
@@ -94,7 +94,7 @@ def generate_narasi_tor_json(kegiatan, total_anggaran, sasaran, list_belanja, po
     except Exception as e:
         # Logika Cadangan: Jika 1.5-flash gagal, kita gunakan model yang paling "tua" tapi paling stabil
         try:
-            st.warning("Model 1.5-flash gagal, mencoba model cadangan (gemini-pro)...")
+            st.warning("Model 3.1-flash-lite gagal, mencoba model cadangan (gemini-pro)...")
             model = genai.GenerativeModel('gemini-pro')
             respons = model.generate_content(prompt)
             teks_respons = respons.text.replace('```json', '').replace('```', '').strip()
