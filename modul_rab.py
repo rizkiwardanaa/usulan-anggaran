@@ -11,13 +11,14 @@ DB_URL = st.secrets["DB_URL"]
 engine = create_engine(DB_URL, pool_size=10, max_overflow=20)
 
 # =====================================================================
-# FUNGSI DATABASE & HELPER
+# FUNGSI DATABASE & HELPER (BUG WIPE DATA DIPERBAIKI)
 # =====================================================================
 @st.cache_data(ttl=300)
 def load_table(table_name, default_cols):
-    conn = engine.connect()
     try:
-        df = pd.read_sql(f"SELECT * FROM {table_name}", conn)
+        with engine.connect() as conn:
+            df = pd.read_sql(f"SELECT * FROM {table_name}", conn)
+            
         for col in default_cols:
             if col not in df.columns:
                 if "Vol" in col or "Harga" in col or "Total" in col: df[col] = 1 if "Vol" in col else 0
@@ -27,17 +28,25 @@ def load_table(table_name, default_cols):
                 elif col == "Versi_RAB": df[col] = "Indikatif"
                 elif col == "Is_Active": df[col] = 1
                 else: df[col] = "-"
-    except:
-        df = pd.DataFrame(columns=default_cols)
-        df.to_sql(table_name, engine, if_exists="replace", index=False)
-    
-    conn.close()
-    if "Is_Active" in df.columns:
-        df["Is_Active"] = pd.to_numeric(df["Is_Active"], errors='coerce').fillna(1).astype(int)
-    return df
+                
+        if "Is_Active" in df.columns:
+            df["Is_Active"] = pd.to_numeric(df["Is_Active"], errors='coerce').fillna(1).astype(int)
+        return df
+        
+    except Exception as e:
+        err_str = str(e).lower()
+        if "does not exist" in err_str or "not found" in err_str or "relation" in err_str:
+            df = pd.DataFrame(columns=default_cols)
+            with engine.connect() as conn:
+                df.to_sql(table_name, conn, if_exists="append", index=False)
+            return df
+        else:
+            st.error(f"Koneksi ke tabel {table_name} terganggu. Error: {e}")
+            return pd.DataFrame(columns=default_cols)
 
 def save_table(df, table_name):
-    df.to_sql(table_name, engine, if_exists="replace", index=False)
+    with engine.connect() as conn:
+        df.to_sql(table_name, conn, if_exists="replace", index=False)
     st.cache_data.clear()
 
 def format_rupiah(x):
