@@ -11,7 +11,7 @@ DB_URL = st.secrets["DB_URL"]
 engine = create_engine(DB_URL, pool_size=10, max_overflow=20)
 
 # =====================================================================
-# FUNGSI DATABASE & HELPER (BUG WIPE DATA DIPERBAIKI)
+# FUNGSI DATABASE & HELPER
 # =====================================================================
 @st.cache_data(ttl=300)
 def load_table(table_name, default_cols):
@@ -52,6 +52,17 @@ def save_table(df, table_name):
 def format_rupiah(x):
     try: return f"{float(x):,.0f}".replace(',', '.')
     except (ValueError, TypeError): return x
+
+def format_tgl_indo(tgl_str):
+    if not tgl_str: return ""
+    try:
+        tgl_clean = str(tgl_str)[:10]
+        dt = datetime.strptime(tgl_clean, "%Y-%m-%d")
+        bulan_indo = ["", "Januari", "Februari", "Maret", "April", "Mei", "Juni", 
+                      "Juli", "Agustus", "September", "Oktober", "November", "Desember"]
+        return f"{dt.day} {bulan_indo[dt.month]} {dt.year}"
+    except:
+        return str(tgl_str)[:10]
 
 def split_kode(teks):
     s = str(teks).strip()
@@ -107,8 +118,8 @@ def export_excel_rab(df_header, df_items, kegiatan_code_map):
     keg_kode = kegiatan_code_map.get(df_header['Kegiatan'].iloc[0], "0000")
 
     meta_rows = [
-        ("Kementerian/ Lembaga:", "(023) KEMENTERIAN PENDIDIKAN TINGGI, SAINS DAN TEKNOLOGI"), 
-        ("Unit Eselon II/ Satker:", "(17) Dirjen Diktiristek / (677524) UNIVERSITAS MULAWARMAN"),
+        ("Kementerian/ Lembaga:", "(023) KEMENTERIAN PENDIDIKAN, KEBUDAYAAN, RISET DAN TEKNOLOGI"), 
+        ("Unit Eselon II/ Satker:", "(17) Dirjen Diktiristek / (677567) UNIVERSITAS MULAWARMAN"),
         ("Sumber Dana:", df_header.get('Sumber_Dana', pd.Series(['BOPTN'])).iloc[0]),
         ("Kegiatan:", f"{keg_kode} - {keg_nama}"), 
         ("Sasaran Kegiatan:", df_header['Sasaran'].iloc[0]), 
@@ -156,13 +167,12 @@ def export_excel_rab(df_header, df_items, kegiatan_code_map):
             print_row("", f"          - {r['Uraian']}", v_sat, r['Harga_Satuan'], r['Total_Biaya'])
             
     rp += 2
-    bulan_indo = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"]
     try: 
         tobj = datetime.strptime(df_header['Tgl_Cetak'].iloc[0], "%Y-%m-%d")
-        tgl_str = f"Samarinda, {tobj.day} {bulan_indo[tobj.month-1]} {tobj.year}"
+        tgl_str = format_tgl_indo(df_header['Tgl_Cetak'].iloc[0])
     except: tgl_str = f"Samarinda, {df_header['Tgl_Cetak'].iloc[0]}"
     
-    ws.cell(row=rp, column=4, value=tgl_str)
+    ws.cell(row=rp, column=4, value=f"Samarinda, {tgl_str}")
     ws.cell(row=rp+1, column=4, value=df_header['Jabatan'].iloc[0])
     ws.cell(row=rp+5, column=4, value=df_header['Nama_Pejabat'].iloc[0]).font = Font(underline="single", bold=True)
     ws.cell(row=rp+6, column=4, value=f"NIP. {df_header['NIP_Pejabat'].iloc[0]}")
@@ -178,9 +188,7 @@ def export_pdf_rab(df_header, df_items, orientasi, kegiatan_code_map):
     keg_kode_full = kegiatan_code_map.get(df_header['Kegiatan'].iloc[0], "0000")
     
     try: 
-        tobj = datetime.strptime(df_header['Tgl_Cetak'].iloc[0], "%Y-%m-%d")
-        bulan_indo = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"]
-        tgl_str = f"Samarinda, {tobj.day} {bulan_indo[tobj.month-1]} {tobj.year}"
+        tgl_str = f"Samarinda, {format_tgl_indo(df_header['Tgl_Cetak'].iloc[0])}"
     except: tgl_str = f"Samarinda, {df_header['Tgl_Cetak'].iloc[0]}"
     
     page_rule = "A4 landscape" if orientasi == "Landscape" else "A4 portrait"
@@ -204,8 +212,8 @@ def export_pdf_rab(df_header, df_items, orientasi, kegiatan_code_map):
     </style></head><body>
     <div class="judul">RINCIAN ANGGARAN BIAYA (RAB) FAKULTAS ILMU BUDAYA<br>TAHUN ANGGARAN {t_rab}</div>
     <table class="tabel-meta">
-        <tr><td class="bold">Kementerian/ Lembaga</td><td>:</td><td>(023) KEMENTERIAN PENDIDIKAN TINGGI, SAINS DAN TEKNOLOGI</td></tr>
-        <tr><td class="bold">Unit Eselon II/ Satker</td><td>:</td><td>(17) Dirjen Diktiristek / (677524) UNIVERSITAS MULAWARMAN</td></tr>
+        <tr><td class="bold">Kementerian/ Lembaga</td><td>:</td><td>(023) KEMENTERIAN PENDIDIKAN, KEBUDAYAAN, RISET DAN TEKNOLOGI</td></tr>
+        <tr><td class="bold">Unit Eselon II/ Satker</td><td>:</td><td>(17) Dirjen Diktiristek / (677567) UNIVERSITAS MULAWARMAN</td></tr>
         <tr><td class="bold">Sumber Dana</td><td>:</td><td>{s_dana}</td></tr>
         <tr><td class="bold">Kegiatan</td><td>:</td><td>{keg_kode_full} - {keg_nama_full}</td></tr>
         <tr><td class="bold">Sasaran Kegiatan</td><td>:</td><td>{df_header['Sasaran'].iloc[0]}</td></tr>
@@ -242,8 +250,10 @@ def export_pdf_rab(df_header, df_items, orientasi, kegiatan_code_map):
 # =====================================================================
 # GENERATOR MATRIK PERUBAHAN & RKAKL
 # =====================================================================
-def generate_matrik_html(df_matrik, v_sebelum, v_menjadi, keg_map):
+def generate_matrik_html(df_matrik, v_sebelum, v_menjadi, keg_map, tahun, tgl_cetak, nama_dekan, nip_dekan):
     if df_matrik.empty: return "<h3>Tidak ada data untuk dibandingkan pada versi tersebut.</h3>"
+    
+    tot_m_global_atas = df_matrik['Tot_m'].sum() if not df_matrik.empty else 0
     
     html = f"""
     <!DOCTYPE html>
@@ -252,16 +262,30 @@ def generate_matrik_html(df_matrik, v_sebelum, v_menjadi, keg_map):
         @page {{ size: A4 landscape; margin: 15mm; }}
         body {{ font-family: 'Arial', sans-serif; font-size: 7.5pt; line-height: 1.2; color: #000; }}
         .center {{ text-align: center; }} .right {{ text-align: right; }} .bold {{ font-weight: bold; }}
-        table {{ width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 7.5pt; }}
-        th, td {{ border: 1px solid black; padding: 4px; vertical-align: top; }}
-        th {{ background-color: #d9d9d9; text-align: center; font-weight: bold; }}
+        .tabel-utama {{ width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 7.5pt; }}
+        .tabel-utama th, .tabel-utama td {{ border: 1px solid black; padding: 4px; vertical-align: top; }}
+        .tabel-utama th {{ background-color: #d9d9d9; text-align: center; font-weight: bold; }}
+        .tabel-meta {{ width: 100%; border: none; font-size: 8.5pt; margin-bottom: 10px; }}
+        .tabel-meta td {{ padding: 2px; }}
         .kro-row {{ background-color: #d9e1f2; }} .ro-row {{ background-color: #e9edf4; }}
         .komp-row {{ background-color: #fff2cc; }} .sub-row {{ background-color: #fce4d6; }}
         .keg-row {{ background-color: #e2efda; }}
+        .ttd-box {{ width: 220px; float: right; text-align: left; margin-top: 20px; margin-right: 15px; page-break-inside: avoid; }}
     </style></head><body>
+    
     <h3 class="center" style="margin-bottom:2px;">MATRIK PERUBAHAN RENCANA KERJA DAN ANGGARAN</h3>
-    <h4 class="center" style="margin-top:0px; margin-bottom:20px;">Versi {v_sebelum} menjadi {v_menjadi}</h4>
-    <table>
+    <h4 class="center" style="margin-top:0px; margin-bottom:20px;">TAHUN ANGGARAN {tahun}<br>Versi {v_sebelum} menjadi {v_menjadi}</h4>
+    
+    <table class="tabel-meta">
+        <tr><td width="15%" class="bold">KEMENTERIAN</td><td width="2%">:</td><td>(023) KEMENTERIAN PENDIDIKAN, KEBUDAYAAN, RISET DAN TEKNOLOGI</td></tr>
+        <tr><td class="bold">SATUAN KERJA</td><td>:</td><td>(677567) UNIVERSITAS MULAWARMAN</td></tr>
+        <tr><td class="bold">PROVINSI</td><td>:</td><td>KALIMANTAN TIMUR</td></tr>
+        <tr><td class="bold">KOTA</td><td>:</td><td>KOTA SAMARINDA</td></tr>
+        <tr><td class="bold">UNIT KERJA</td><td>:</td><td>Fakultas Ilmu Budaya</td></tr>
+        <tr><td class="bold">ALOKASI MENJADI</td><td>:</td><td class="bold">Rp. {format_rupiah(tot_m_global_atas)}</td></tr>
+    </table>
+    
+    <table class="tabel-utama">
         <tr>
             <th width="7%" rowspan="2">KODE</th>
             <th width="28%" rowspan="2">URAIAN PROGRAM / KEGIATAN /<br>KOMPONEN / AKUN / DETAIL</th>
@@ -317,41 +341,62 @@ def generate_matrik_html(df_matrik, v_sebelum, v_menjadi, keg_map):
                                 h_m = format_rupiah(det['Hrg_m']) if det['Tot_m'] > 0 else "-"
                                 html += f"<tr><td></td><td style='padding-left:30px;'>- {det['Uraian']}</td><td class='center'>{v_s}</td><td class='right'>{h_s}</td><td class='right'>{format_rupiah(det['Tot_s'])}</td><td class='center'>{v_m}</td><td class='right'>{h_m}</td><td class='right'>{format_rupiah(det['Tot_m'])}</td><td class='right'>{format_rupiah(det['Selisih'])}</td><td></td></tr>"
 
-    html += f"""<tr class='bold' style='background-color:#d9d9d9;'><td colspan='2' class='right'>TOTAL GLOBAL</td><td></td><td></td><td class='right'>Rp {format_rupiah(tot_s_global)}</td><td></td><td></td><td class='right'>Rp {format_rupiah(tot_m_global)}</td><td class='right'>Rp {format_rupiah(tot_sel_global)}</td><td></td></tr></table></body></html>"""
+    html += f"""<tr class='bold' style='background-color:#d9d9d9;'><td colspan='2' class='right'>TOTAL GLOBAL</td><td></td><td></td><td class='right'>Rp {format_rupiah(tot_s_global)}</td><td></td><td></td><td class='right'>Rp {format_rupiah(tot_m_global)}</td><td class='right'>Rp {format_rupiah(tot_sel_global)}</td><td></td></tr></table>
+    <div class="ttd-box">
+        Samarinda, {tgl_cetak}<br>Dekan<br><br><br><br><br>
+        <b><u>{nama_dekan}</u></b><br>NIP. {nip_dekan}
+    </div>
+    </body></html>"""
     return html
 
-def generate_rkakl_html(df_utama, df_detail, kegiatan_code_map):
+def generate_rkakl_html(df_utama, df_detail, kegiatan_code_map, tahun, tgl_cetak, nama_dekan, nip_dekan):
     if df_utama.empty: return "<h3>Belum ada data RAB aktif.</h3>"
-    html = """
+    
+    total_semua = df_detail[df_detail['ID_RAB'].isin(df_utama['ID_RAB'])]['Total_Biaya'].sum()
+    
+    html = f"""
     <!DOCTYPE html>
     <html><head><meta charset="utf-8">
     <style>
-        @page { size: A4 portrait; margin: 10mm; }
-        body { font-family: 'Arial', sans-serif; font-size: 7.5pt; line-height: 1.2; color: #000; }
-        .center { text-align: center; } .right { text-align: right; } .bold { font-weight: bold; }
-        table { width: 100%; border-collapse: collapse; margin-top: 5px; font-size: 7.5pt; }
-        th, td { border: 1px solid black; padding: 4px 5px; vertical-align: top; }
-        th { background-color: #d9d9d9; text-align: center; font-weight: bold; }
-        .kro-row { background-color: #d9e1f2; } .ro-row { background-color: #e9edf4; }
-        .komp-row { background-color: #fff2cc; } .sub-row { background-color: #fce4d6; }
-        .keg-row { background-color: #e2efda; }
+        @page {{ size: A4 portrait; margin: 10mm; }}
+        body {{ font-family: 'Arial', sans-serif; font-size: 7.5pt; line-height: 1.2; color: #000; }}
+        .center {{ text-align: center; }} .right {{ text-align: right; }} .bold {{ font-weight: bold; }}
+        .tabel-utama {{ width: 100%; border-collapse: collapse; margin-top: 5px; font-size: 7.5pt; }}
+        .tabel-utama th, .tabel-utama td {{ border: 1px solid black; padding: 4px 5px; vertical-align: top; }}
+        .tabel-utama th {{ background-color: #d9d9d9; text-align: center; font-weight: bold; }}
+        .tabel-meta {{ width: 100%; border: none; font-size: 8.5pt; margin-bottom: 10px; }}
+        .tabel-meta td {{ padding: 2px; }}
+        .kro-row {{ background-color: #d9e1f2; }} .ro-row {{ background-color: #e9edf4; }}
+        .komp-row {{ background-color: #fff2cc; }} .sub-row {{ background-color: #fce4d6; }}
+        .keg-row {{ background-color: #e2efda; }}
+        .ttd-box {{ width: 220px; float: right; text-align: left; margin-top: 20px; margin-right: 15px; page-break-inside: avoid; }}
     </style></head><body>
+    
     <h3 class="center" style="margin-bottom:2px;">LAPORAN RENCANA KERJA DAN ANGGARAN (RKAKL)</h3>
-    <h4 class="center" style="margin-top:0px; margin-bottom:15px;">FAKULTAS ILMU BUDAYA - UNIVERSITAS MULAWARMAN</h4>
-    <table>
+    <h4 class="center" style="margin-top:0px; margin-bottom:15px;">TAHUN ANGGARAN {tahun}</h4>
+    
+    <table class="tabel-meta">
+        <tr><td width="15%" class="bold">KEMENTERIAN</td><td width="2%">:</td><td>(023) KEMENTERIAN PENDIDIKAN, KEBUDAYAAN, RISET DAN TEKNOLOGI</td></tr>
+        <tr><td class="bold">SATUAN KERJA</td><td>:</td><td>(677567) UNIVERSITAS MULAWARMAN</td></tr>
+        <tr><td class="bold">PROVINSI</td><td>:</td><td>KALIMANTAN TIMUR</td></tr>
+        <tr><td class="bold">KOTA</td><td>:</td><td>KOTA SAMARINDA</td></tr>
+        <tr><td class="bold">UNIT KERJA</td><td>:</td><td>Fakultas Ilmu Budaya</td></tr>
+        <tr><td class="bold">ALOKASI</td><td>:</td><td class="bold">Rp. {format_rupiah(total_semua)}</td></tr>
+    </table>
+    
+    <table class="tabel-utama">
         <tr>
             <th width="10%">KODE</th>
             <th width="40%">PROGRAM / KEGIATAN / OUTPUT / SUBOUTPUT /<br>KOMPONEN / SUBKOMP / JUDUL KEGIATAN / AKUN / DETIL</th>
             <th width="12%">VOL</th><th width="14%">HARGA SATUAN</th><th width="14%">JUMLAH BIAYA</th><th width="10%">DANA</th>
         </tr>
     """
-    total_semua = 0
+    
     for kro, g_kro in df_utama.groupby('KRO'):
         k_kro, n_kro = split_kode(kro)
         s_dana = g_kro['Sumber_Dana'].iloc[0]
         ids_kro = g_kro['ID_RAB'].tolist()
         tot_kro = df_detail[df_detail['ID_RAB'].isin(ids_kro)]['Total_Biaya'].sum()
-        total_semua += tot_kro
         html += f"<tr class='kro-row bold'><td>{k_kro}</td><td>{n_kro}</td><td></td><td></td><td class='right'>{format_rupiah(tot_kro)}</td><td class='center'>{s_dana}</td></tr>"
         for ro, g_ro in g_kro.groupby('RO'):
             k_ro, n_ro = split_kode(ro)
@@ -383,7 +428,12 @@ def generate_rkakl_html(df_utama, df_detail, kegiatan_code_map):
                                 v_sat = get_vol_sat_combined(det['Vol_1'], det['Sat_1'], det['Vol_2'], det['Sat_2'])
                                 html += f"<tr><td></td><td style='padding-left:30px;'>- {det['Uraian']}</td><td class='center'>{v_sat}</td><td class='right'>{format_rupiah(det['Harga_Satuan'])}</td><td class='right'>{format_rupiah(det['Total_Biaya'])}</td><td></td></tr>"
 
-    html += f"<tr class='bold' style='background-color:#d9d9d9;'><td colspan='4' class='right'>TOTAL SELURUH ANGGARAN</td><td class='right'>Rp {format_rupiah(total_semua)}</td><td></td></tr></table></body></html>"
+    html += f"""<tr class='bold' style='background-color:#d9d9d9;'><td colspan='4' class='right'>TOTAL SELURUH ANGGARAN (RKAKL AKTIF)</td><td class='right'>Rp {format_rupiah(total_semua)}</td><td></td></tr></table>
+    <div class="ttd-box">
+        Samarinda, {tgl_cetak}<br>Dekan<br><br><br><br><br>
+        <b><u>{nama_dekan}</u></b><br>NIP. {nip_dekan}
+    </div>
+    </body></html>"""
     return html
 
 # =====================================================================
@@ -656,7 +706,7 @@ def show_page():
                         st.success(f"✅ RAB '{rab_kegiatan.title()}' Versi '{rab_versi}' Tersimpan!"); st.rerun()
 
     # -----------------------------------------------------------------
-    # TAB 3: ARSIP & MANAJEMEN VERSI RAB (DENGAN FIX BUG COPY MASSAL & CETAK)
+    # TAB 3: ARSIP & MANAJEMEN VERSI RAB
     # -----------------------------------------------------------------
     with tab_daftar:
         df_utama_thn = df_rab_utama[df_rab_utama['Tahun'] == tahun_aktif]
@@ -692,7 +742,6 @@ def show_page():
                 st.write("Salin seluruh kegiatan pada versi ini ke versi baru sekaligus. Sangat cocok digunakan sebelum membuat revisi RKAKL.")
                 target_versi = st.selectbox("Pilih Target Versi Baru:", ["Transisi","Indikatif", "Definitif", "Revisi 1", "Revisi 2", "Revisi 3", "Revisi 4", "Revisi 5", "Revisi 6", "Revisi 7", "Revisi 8", "Revisi 9", "Revisi 10","Revisi 11","Revisi 12","Revisi 13"])
                 if st.button(f"🚀 Salin Semua ke '{target_versi}'", type="primary"):
-                    # Nonaktifkan versi lama di tahun yang sama
                     df_rab_utama.loc[df_rab_utama['Tahun'] == tahun_aktif, 'Is_Active'] = 0
                     for i, (_, row_keg) in enumerate(df_v_terpilih.iterrows()):
                         new_row = row_keg.copy()
@@ -748,12 +797,21 @@ def show_page():
     # -----------------------------------------------------------------
     with tab_rekap:
         st.subheader(f"📊 Buku Rekapitulasi (RKAKL) Aktif Tahun {tahun_aktif}")
+        
+        # PENAMBAHAN INPUT CUSTOM UNTUK TANDA TANGAN
+        col_r1, col_r2, col_r3 = st.columns(3)
+        tgl_skrg = format_tgl_indo(datetime.now().strftime("%Y-%m-%d"))
+        tgl_cetak_rkakl = col_r1.text_input("Tanggal Cetak Dokumen RKAKL", value=tgl_skrg, key="tgl_rkakl")
+        dekan_rkakl = col_r2.text_input("Nama Dekan", value="Prof. Dr. M. Bahri Arifin, M.Hum.", key="dek_rkakl")
+        nip_rkakl = col_r3.text_input("NIP Dekan", value="196211271989031004", key="nip_rkakl")
+        st.markdown("---")
+        
         df_aktif = df_rab_utama[(df_rab_utama['Is_Active'] == 1) & (df_rab_utama['Tahun'] == tahun_aktif)]
         if df_aktif.empty:
             st.info(f"Belum ada RAB aktif untuk tahun {tahun_aktif}.")
         else:
             df_det_aktif = df_rab_detail[df_rab_detail['ID_RAB'].isin(df_aktif['ID_RAB'])]
-            html_rkakl = generate_rkakl_html(df_aktif, df_det_aktif, kegiatan_code_map)
+            html_rkakl = generate_rkakl_html(df_aktif, df_det_aktif, kegiatan_code_map, tahun_aktif, tgl_cetak_rkakl, dekan_rkakl, nip_rkakl)
             with st.container(border=True): components.html(html_rkakl, height=600, scrolling=True)
             st.download_button("📥 Cetak Buku Rekap RKAKL (.html)", data=html_rkakl.encode('utf-8'), file_name=f"RKAKL_FIB_{tahun_aktif}_{datetime.now().strftime('%Y%m%d')}.html", mime="text/html", type="primary")
 
@@ -762,6 +820,15 @@ def show_page():
     # -----------------------------------------------------------------
     with tab_matrik:
         st.subheader("⚖️ Matrik Perbandingan Revisi Anggaran")
+        
+        # PENAMBAHAN INPUT CUSTOM UNTUK TANDA TANGAN
+        col_m1, col_m2, col_m3 = st.columns(3)
+        tgl_skrg_matrik = format_tgl_indo(datetime.now().strftime("%Y-%m-%d"))
+        tgl_cetak_matrik = col_m1.text_input("Tanggal Cetak Matrik", value=tgl_skrg_matrik, key="tgl_matrik")
+        dekan_matrik = col_m2.text_input("Nama Dekan (Matrik)", value="Prof. Dr. M. Bahri Arifin, M.Hum.", key="dek_matrik")
+        nip_matrik = col_m3.text_input("NIP Dekan (Matrik)", value="196211271989031004", key="nip_matrik")
+        st.markdown("---")
+        
         df_thn = df_rab_utama[df_rab_utama['Tahun'] == tahun_aktif]
         if df_thn.empty:
             st.warning("Belum ada data untuk dibandingkan.")
@@ -804,6 +871,6 @@ def show_page():
                 
                 if df_matrik.empty: st.info("Tidak ada data rincian pada kedua versi yang dipilih.")
                 else:
-                    html_matrik = generate_matrik_html(df_matrik, pilih_v1, pilih_v2, kegiatan_code_map)
+                    html_matrik = generate_matrik_html(df_matrik, pilih_v1, pilih_v2, kegiatan_code_map, tahun_aktif, tgl_cetak_matrik, dekan_matrik, nip_matrik)
                     with st.container(border=True): components.html(html_matrik, height=600, scrolling=True)
                     st.download_button("📥 Cetak Matrik Perubahan (.html)", data=html_matrik.encode('utf-8'), file_name=f"Matrik_{tahun_aktif}_{pilih_v1}_vs_{pilih_v2}.html", mime="text/html")
