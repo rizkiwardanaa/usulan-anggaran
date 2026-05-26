@@ -175,7 +175,7 @@ def export_excel_rab(df_header, df_items, kegiatan_code_map):
     ws.cell(row=rp, column=4, value=f"Samarinda, {tgl_str}")
     ws.cell(row=rp+1, column=4, value=df_header['Jabatan'].iloc[0])
     ws.cell(row=rp+5, column=4, value=df_header['Nama_Pejabat'].iloc[0]).font = Font(underline="single", bold=True)
-    ws.cell(row=rp+6, column=4, value=f"NIP. {df_header['NIP_Pejabat'].iloc[0]}")
+    ws.cell(row=rp+6, column=4, value=f"NIP {df_header['NIP_Pejabat'].iloc[0]}")
 
     output = BytesIO(); wb.save(output)
     return output.getvalue()
@@ -242,7 +242,7 @@ def export_pdf_rab(df_header, df_items, orientasi, kegiatan_code_map):
     html += f"""</table>
     <div class="ttd-box">
         {tgl_str}<br>{df_header['Jabatan'].iloc[0]}<br><br><br><br><br>
-        <b><u>{df_header['Nama_Pejabat'].iloc[0]}</u></b><br>NIP. {df_header['NIP_Pejabat'].iloc[0]}
+        <b><u>{df_header['Nama_Pejabat'].iloc[0]}</u></b><br>NIP {df_header['NIP_Pejabat'].iloc[0]}
     </div>
     </body></html>"""
     return html
@@ -344,7 +344,7 @@ def generate_matrik_html(df_matrik, v_sebelum, v_menjadi, keg_map, tahun, tgl_ce
     html += f"""<tr class='bold' style='background-color:#d9d9d9;'><td colspan='2' class='right'>TOTAL GLOBAL</td><td></td><td></td><td class='right'>Rp {format_rupiah(tot_s_global)}</td><td></td><td></td><td class='right'>Rp {format_rupiah(tot_m_global)}</td><td class='right'>Rp {format_rupiah(tot_sel_global)}</td><td></td></tr></table>
     <div class="ttd-box">
         Samarinda, {tgl_cetak}<br>Dekan<br><br><br><br><br>
-        <b><u>{nama_dekan}</u></b><br>NIP. {nip_dekan}
+        <b><u>{nama_dekan}</u></b><br>NIP {nip_dekan}
     </div>
     </body></html>"""
     return html
@@ -431,7 +431,7 @@ def generate_rkakl_html(df_utama, df_detail, kegiatan_code_map, tahun, tgl_cetak
     html += f"""<tr class='bold' style='background-color:#d9d9d9;'><td colspan='4' class='right'>TOTAL SELURUH ANGGARAN (RKAKL AKTIF)</td><td class='right'>Rp {format_rupiah(total_semua)}</td><td></td></tr></table>
     <div class="ttd-box">
         Samarinda, {tgl_cetak}<br>Dekan<br><br><br><br><br>
-        <b><u>{nama_dekan}</u></b><br>NIP. {nip_dekan}
+        <b><u>{nama_dekan}</u></b><br>NIP {nip_dekan}
     </div>
     </body></html>"""
     return html
