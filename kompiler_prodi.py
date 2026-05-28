@@ -2,6 +2,7 @@ import streamlit as st
 import modul_kompiler
 import modul_rab
 import modul_tor  # Tambahan impor modul TOR pintar
+import modul_ekstrak_rkakl # Tambahan impor mesin pengekstraksi PDF
 
 # ==========================================
 # KONFIGURASI HALAMAN UTAMA
@@ -53,7 +54,8 @@ with st.sidebar:
         menu_options = [
             "1. Dashboard Kompiler Usulan", 
             "2. Pengolah Dokumen RAB", 
-            "3. Generator TOR Otomatis"
+            "3. Generator TOR Otomatis",
+            "4. Ekstrak RKAKL Universitas" # Menu baru khusus admin
         ]
     else:
         menu_options = [
@@ -76,3 +78,5 @@ elif "Pengolah Dokumen RAB" in menu_pilihan:
     modul_rab.show_page()
 elif "Generator TOR Otomatis" in menu_pilihan:
     modul_tor.show_page()
+elif "Ekstrak RKAKL Universitas" in menu_pilihan:
+    modul_ekstrak_rkakl.show_page()
