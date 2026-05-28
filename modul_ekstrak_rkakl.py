@@ -8,7 +8,7 @@ import io
 try:
     import PyPDF2
 except ImportError:
-    st.error("⚠️ Pustaka PyPDF2 belum terinstal. Silakan buka terminal/CMD dan ketik: pip install PyPDF2")
+    st.error("⚠️ Pustaka PyPDF2 belum terinstal. Silakan tambahkan 'PyPDF2' ke dalam file requirements.txt di GitHub Anda.")
 
 # --- KONEKSI DATABASE ---
 DB_URL = st.secrets["DB_URL"]
@@ -25,7 +25,7 @@ def save_table(df, table_name):
         df.to_sql(table_name, conn, if_exists="replace", index=False)
     st.cache_data.clear()
 
-# --- MESIN PISAU PYTHON (PARSER) ---
+# --- MESIN PISAU PYTHON (SUPER PARSER) ---
 def parse_pdf_rkakl(file_bytes):
     reader = PyPDF2.PdfReader(file_bytes)
     text = ""
@@ -34,52 +34,73 @@ def parse_pdf_rkakl(file_bytes):
 
     lines = text.split('\n')
     extracted_data = []
+    debug_logs = []
     
-    # State Memory (Ingatan Mesin)
-    curr_keg_name, curr_akun_code, curr_akun_name = "", "", ""
+    curr_keg_name = "Kegiatan Default"
+    curr_akun_code = "000000"
+    curr_akun_name = "Akun Tidak Dikenal"
     buffer_text = ""
 
     def process_buffer(b_text, keg, a_code, a_name):
-        tokens = b_text.split()
-        if len(tokens) < 4: return None
+        # 1. Bersihkan sisa teks BOPTN/PNBP di ekor agar angka tidak terhalang
+        clean_text = re.sub(r'\b(BOPTN|PNBP)\b', '', b_text, flags=re.IGNORECASE).strip()
 
-        # Ekstrak 3 Angka Terakhir (Volume, Harga, Total)
-        tot_str = tokens[-1].replace(',', '').replace('.', '')
-        hrg_str = tokens[-2].replace(',', '').replace('.', '')
-        vol_str = tokens[-3].replace(',', '').replace('.', '')
+        # 2. Pola Cerdas: Cari 3 deret angka berurutan di mana saja pada ujung kalimat
+        num_pattern = r'((?:\d{1,3}(?:[.,]\d{3})*|\d+))'
+        pattern = rf'(.*?)\s+{num_pattern}\s+{num_pattern}\s+{num_pattern}\s*$'
+        match = re.search(pattern, clean_text)
+        
+        if not match: 
+            debug_logs.append(f"❌ GAGAL (Tidak Ditemukan 3 Angka): {clean_text}")
+            return None
+            
+        uraian_full = match.group(1).strip()
+        vol_str = match.group(2).replace(',', '').replace('.', '')
+        hrg_str = match.group(3).replace(',', '').replace('.', '')
+        tot_str = match.group(4).replace(',', '').replace('.', '')
 
-        if tot_str.isdigit() and hrg_str.isdigit() and vol_str.isdigit():
-            uraian_full = " ".join(tokens[:-3])
-            total = int(tot_str)
-            harga = int(hrg_str)
-        else:
-            return None # Bukan baris rincian yang valid
-
-        # Pisau 1: Buang Grup Belanja (sebelum tanda :)
+        if not (vol_str.isdigit() and hrg_str.isdigit() and tot_str.isdigit()):
+            debug_logs.append(f"❌ GAGAL (Format Angka Invalid): {vol_str} | {hrg_str} | {tot_str}")
+            return None
+            
+        total = int(tot_str)
+        harga = int(hrg_str)
+        
+        # 3. Potong buang Grup Belanja (sebelum tanda titik dua)
         if ":" in uraian_full:
             uraian_full = uraian_full.split(":", 1)[1].strip()
 
-        # Pisau 2: Tarik Satuan dalam [...]
+        # 4. Tarik teks satuan dalam [...] meskipun kurung tutupnya hilang di PDF
         satuan_teks = ""
-        match = re.search(r"\[(.*?)\]", uraian_full)
-        if match:
-            satuan_teks = match.group(1)
-            uraian_full = re.sub(r"\[.*?\]", "", uraian_full).strip()
+        match_sat = re.search(r"\[(.*?)(?:\]|$)", uraian_full)
+        if match_sat:
+            satuan_teks = re.sub(r'\bFIB\b', '', match_sat.group(1)).strip()
+            uraian_full = re.sub(r"\[.*?(?:\]|$)", "", uraian_full).strip()
 
-        uraian_full = uraian_full.strip("- ").replace("FIB", "").strip()
+        uraian_full = re.sub(r'\bFIB\b', '', uraian_full).strip("- ")
 
-        # Pisau 3: Pecah Volume & Satuan (mencari tanda 'x')
+        # 5. Pecah Satuan dengan pendeteksi huruf 'x'
         v1, s1, v2, s2 = 1, "Unit", 1, "-"
-        if " x " in satuan_teks.lower() or " X " in satuan_teks:
-            parts = re.split(r"(?i)\s+x\s+", satuan_teks)
-            p1 = parts[0].strip().split(maxsplit=1)
-            if len(p1) == 2 and p1[0].isdigit(): v1, s1 = int(p1[0]), p1[1].title()
-            p2 = parts[1].strip().split(maxsplit=1)
-            if len(p2) == 2 and p2[0].isdigit(): v2, s2 = int(p2[0]), p2[1].title()
-        else:
-            p1 = satuan_teks.strip().split(maxsplit=1)
-            if len(p1) == 2 and p1[0].isdigit(): v1, s1 = int(p1[0]), p1[1].title()
+        if satuan_teks:
+            if " x " in satuan_teks.lower() or " X " in satuan_teks:
+                parts = re.split(r"(?i)\s+x\s+", satuan_teks)
+                
+                p1 = parts[0].strip().split(maxsplit=1)
+                if len(p1) >= 1 and p1[0].isdigit(): v1 = int(p1[0])
+                if len(p1) == 2: s1 = p1[1].title()
+                elif len(p1) == 1: s1 = "Layanan"
+                
+                p2 = parts[1].strip().split(maxsplit=1)
+                if len(p2) >= 1 and p2[0].isdigit(): v2 = int(p2[0])
+                if len(p2) == 2: s2 = p2[1].title()
+                elif len(p2) == 1: s2 = "Layanan"
+            else:
+                p1 = satuan_teks.strip().split(maxsplit=1)
+                if len(p1) >= 1 and p1[0].isdigit(): v1 = int(p1[0])
+                if len(p1) == 2: s1 = p1[1].title()
+                elif len(p1) == 1: s1 = "Layanan"
 
+        debug_logs.append(f"✅ SUKSES: {uraian_full} || {v1} {s1} x {v2} {s2} || Rp{harga} || Rp{total}")
         return {
             "Kegiatan": keg, "Akun_Code": a_code, "Akun_Name": a_name,
             "Uraian": uraian_full, "Vol_1": v1, "Sat_1": s1, "Vol_2": v2, "Sat_2": s2,
@@ -90,45 +111,43 @@ def parse_pdf_rkakl(file_bytes):
         line = line.strip()
         if not line: continue
 
-        # Deteksi Header/Hirarki
-        tokens = line.split(maxsplit=1)
-        kode = tokens[0]
-        desc = tokens[1] if len(tokens) > 1 else ""
-
-        if re.match(r"^\d{6}$", kode):  # Deteksi Akun (Cth: 524119)
-            curr_akun_code = kode
-            curr_akun_name = re.sub(r"[\d\.,]+\s*(BOPTN|PNBP)?$", "", desc).strip()
-            continue
-        elif re.match(r"^\d{4}$", kode):  # Deteksi Kegiatan (Cth: 0089)
-            if not desc.lower().startswith("penyediaan"): 
-                curr_keg_name = re.sub(r"[\d\.,]+\s*$", "", desc).strip()
+        # Deteksi Header Akun
+        match_akun = re.match(r"^(\d{6})\s+(.*)", line)
+        if match_akun:
+            curr_akun_code = match_akun.group(1)
+            curr_akun_name = re.sub(r"[\d\.,]+\s*(BOPTN|PNBP)?$", "", match_akun.group(2)).strip()
             continue
             
-        # Deteksi Baris Rincian Belanja (Diawali '-')
+        # Deteksi Header Kegiatan
+        match_keg = re.match(r"^(\d{4})\s+(.*)", line)
+        if match_keg:
+            if not match_keg.group(2).lower().startswith("penyediaan"):
+                curr_keg_name = re.sub(r"[\d\.,]+\s*$", "", match_keg.group(2)).strip()
+            continue
+
         if line.startswith("-"):
             if buffer_text:
                 res = process_buffer(buffer_text, curr_keg_name, curr_akun_code, curr_akun_name)
                 if res: extracted_data.append(res)
             buffer_text = line
         elif buffer_text and not re.match(r"^(\d{6}|\d{4}|[A-Z]|\d{3})\b", line):
-            # Teks turun baris (Text Wrapping) -> Jahit!
             buffer_text += " " + line
             
-    # Proses buffer terakhir
     if buffer_text:
         res = process_buffer(buffer_text, curr_keg_name, curr_akun_code, curr_akun_name)
         if res: extracted_data.append(res)
 
-    return pd.DataFrame(extracted_data)
-
+    return pd.DataFrame(extracted_data), debug_logs
 
 # --- TAMPILAN ANTARMUKA (UI) ---
 def show_page():
     st.title("📥 Mesin Ekstraksi RKAKL Otomatis")
-    st.caption("Unggah PDF RKAKL dari sistem Universitas. Sistem akan membaca, memecah, dan menyusunnya menjadi database RAB dalam 2 detik.")
+    st.caption("Unggah PDF RKAKL dari sistem Universitas. Sistem akan membaca, memecah, dan menyusunnya menjadi database RAB.")
 
     if 'ekstrak_result' not in st.session_state:
         st.session_state.ekstrak_result = pd.DataFrame()
+    if 'ekstrak_log' not in st.session_state:
+        st.session_state.ekstrak_log = []
 
     with st.container(border=True):
         st.subheader("1. Setup Target Injeksi")
@@ -142,14 +161,22 @@ def show_page():
         if st.button("🚀 Ekstrak Dokumen Sekarang", type="primary"):
             if file_pdf:
                 with st.spinner("Menganalisis hirarki dan menjahit teks..."):
-                    df_hasil = parse_pdf_rkakl(file_pdf)
+                    df_hasil, log_debug = parse_pdf_rkakl(file_pdf)
+                    st.session_state.ekstrak_log = log_debug
+                    
                     if not df_hasil.empty:
                         st.session_state.ekstrak_result = df_hasil
                         st.success(f"Berhasil mengekstrak {len(df_hasil)} baris rincian belanja!")
                     else:
-                        st.error("Gagal mengekstrak. Pastikan format PDF sesuai dengan standar RKA.")
+                        st.error("❌ Gagal mengekstrak rincian belanja. Silakan cek 'Log Debug Mesin' di bawah untuk melihat penyebabnya.")
             else:
                 st.error("Harap unggah file PDF terlebih dahulu.")
+
+    if st.session_state.ekstrak_log:
+        with st.expander("🛠️ Log Debug Mesin (Untuk Analisis Error)"):
+            for log in st.session_state.ekstrak_log:
+                if log.startswith("✅"): st.success(log)
+                else: st.warning(log)
 
     if not st.session_state.ekstrak_result.empty:
         st.markdown("---")
@@ -181,13 +208,11 @@ def show_page():
                 
                 kegiatan_unik = df_edit['Kegiatan'].unique()
                 for keg_name in kegiatan_unik:
-                    # Generate ID unik untuk setiap kegiatan
                     new_id = f"RAB-EXT-{datetime.now().strftime('%Y%m%d%H%M%S%f')}"
                     
                     df_keg_details = df_edit[df_edit['Kegiatan'] == keg_name].copy()
                     total_alokasi = df_keg_details['Total_Biaya'].sum()
                     
-                    # Entry ke RAB Utama
                     new_utama = pd.DataFrame([{
                         "ID_RAB": new_id, "Tanggal": datetime.now().strftime('%Y-%m-%d %H:%M'), 
                         "Tahun": thn_target, "Tgl_Cetak": datetime.now().strftime('%Y-%m-%d'),
@@ -198,7 +223,6 @@ def show_page():
                     }])
                     df_rab_utama = pd.concat([df_rab_utama, new_utama], ignore_index=True)
                     
-                    # Entry ke RAB Detail
                     df_keg_details['ID_RAB'] = new_id
                     df_keg_details['Akun_Belanja'] = df_keg_details['Akun_Code'] + " - " + df_keg_details['Akun_Name']
                     new_detail = df_keg_details[['ID_RAB', 'Akun_Belanja', 'Uraian', 'Vol_1', 'Sat_1', 'Vol_2', 'Sat_2', 'Harga_Satuan', 'Total_Biaya']]
@@ -207,6 +231,6 @@ def show_page():
                 save_table(df_rab_utama, "rab_utama")
                 save_table(df_rab_detail, "rab_detail")
                 
-                st.session_state.ekstrak_result = pd.DataFrame() # Bersihkan karantina
+                st.session_state.ekstrak_result = pd.DataFrame() 
                 st.success("🎉 Seluruh data RKAKL berhasil diinjeksi ke dalam sistem RAB Anda!")
                 st.rerun()
