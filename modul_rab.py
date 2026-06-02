@@ -11,7 +11,7 @@ DB_URL = st.secrets["DB_URL"]
 engine = create_engine(DB_URL, pool_size=10, max_overflow=20)
 
 # =====================================================================
-# FUNGSI DATABASE & HELPER (BUG WIPE DATA DIPERBAIKI)
+# FUNGSI DATABASE & HELPER
 # =====================================================================
 @st.cache_data(ttl=300)
 def load_table(table_name, default_cols):
@@ -90,7 +90,7 @@ def get_vol_sat_combined(v1, s1, v2, s2):
 # =====================================================================
 # GENERATOR CETAK RAB SATUAN (EXCEL & PDF)
 # =====================================================================
-def export_excel_rab(df_header, df_items, kegiatan_code_map):
+def export_excel_rab(df_header, df_items, kegiatan_code_map, tampilkan_paraf=False):
     import openpyxl
     from openpyxl.styles import Font, Alignment, Border, Side
     wb = openpyxl.Workbook(); ws = wb.active; ws.title = "RAB Export"
@@ -177,10 +177,31 @@ def export_excel_rab(df_header, df_items, kegiatan_code_map):
     ws.cell(row=rp+5, column=4, value=df_header['Nama_Pejabat'].iloc[0]).font = Font(underline="single", bold=True)
     ws.cell(row=rp+6, column=4, value=f"NIP. {df_header['NIP_Pejabat'].iloc[0]}")
 
+    if tampilkan_paraf:
+        rp_paraf = rp
+        ws.cell(row=rp_paraf, column=1, value="No").border = border_all
+        ws.cell(row=rp_paraf, column=1).font = font_bold
+        ws.cell(row=rp_paraf, column=1).alignment = align_center
+        ws.cell(row=rp_paraf, column=2, value="Jabatan").border = border_all
+        ws.cell(row=rp_paraf, column=2).font = font_bold
+        ws.cell(row=rp_paraf, column=2).alignment = align_center
+        ws.cell(row=rp_paraf, column=3, value="Paraf").border = border_all
+        ws.cell(row=rp_paraf, column=3).font = font_bold
+        ws.cell(row=rp_paraf, column=3).alignment = align_center
+        
+        jabatan_list = ["Wakil Dekan Bidang Keuangan dan Umum", "Kepala Bagian Umum", "Staf Perencanaan"]
+        for i, jab in enumerate(jabatan_list, start=1):
+            rp_paraf += 1
+            ws.cell(row=rp_paraf, column=1, value=i).border = border_all
+            ws.cell(row=rp_paraf, column=1).alignment = align_center
+            ws.cell(row=rp_paraf, column=2, value=f" {jab}").border = border_all
+            ws.cell(row=rp_paraf, column=3, value="").border = border_all
+            ws.row_dimensions[rp_paraf].height = 25
+
     output = BytesIO(); wb.save(output)
     return output.getvalue()
 
-def export_pdf_rab(df_header, df_items, orientasi, kegiatan_code_map):
+def export_pdf_rab(df_header, df_items, orientasi, kegiatan_code_map, tampilkan_paraf=False):
     total_seluruh = df_items["Total_Biaya"].sum()
     t_rab = df_header.get('Tahun', pd.Series(['2027'])).iloc[0]
     s_dana = df_header.get('Sumber_Dana', pd.Series(['BOPTN'])).iloc[0]
@@ -193,6 +214,21 @@ def export_pdf_rab(df_header, df_items, orientasi, kegiatan_code_map):
     
     page_rule = "A4 landscape" if orientasi == "Landscape" else "A4 portrait"
     
+    paraf_html = ""
+    if tampilkan_paraf:
+        paraf_html = """
+        <table style="width: 320px; border-collapse: collapse; float: left; margin-top: 20px; font-size: 8pt;">
+            <tr>
+                <th style="border: 1px solid black; padding: 4px; text-align: center; width: 10%;">No</th>
+                <th style="border: 1px solid black; padding: 4px; text-align: center; width: 65%;">Jabatan</th>
+                <th style="border: 1px solid black; padding: 4px; text-align: center; width: 25%;">Paraf</th>
+            </tr>
+            <tr><td style="border: 1px solid black; height: 35px; text-align: center; vertical-align: middle;">1</td><td style="border: 1px solid black; padding-left: 5px;">Wakil Dekan Bidang Keuangan dan Umum</td><td style="border: 1px solid black;"></td></tr>
+            <tr><td style="border: 1px solid black; height: 35px; text-align: center; vertical-align: middle;">2</td><td style="border: 1px solid black; padding-left: 5px;">Kepala Bagian Umum</td><td style="border: 1px solid black;"></td></tr>
+            <tr><td style="border: 1px solid black; height: 35px; text-align: center; vertical-align: middle;">3</td><td style="border: 1px solid black; padding-left: 5px;">Staf Perencanaan</td><td style="border: 1px solid black;"></td></tr>
+        </table>
+        """
+
     html = f"""
     <!DOCTYPE html>
     <html><head><meta charset="utf-8">
@@ -244,17 +280,34 @@ def export_pdf_rab(df_header, df_items, orientasi, kegiatan_code_map):
         {tgl_str}<br>{df_header['Jabatan'].iloc[0]}<br><br><br><br><br>
         <b><u>{df_header['Nama_Pejabat'].iloc[0]}</u></b><br>NIP. {df_header['NIP_Pejabat'].iloc[0]}
     </div>
+    {paraf_html}
+    <div style="clear: both;"></div>
     </body></html>"""
     return html
 
 # =====================================================================
 # GENERATOR MATRIK PERUBAHAN & RKAKL
 # =====================================================================
-def generate_matrik_html(df_matrik, v_sebelum, v_menjadi, keg_map, tahun, tgl_cetak, nama_dekan, nip_dekan, sumber_dana):
+def generate_matrik_html(df_matrik, v_sebelum, v_menjadi, keg_map, tahun, tgl_cetak, nama_dekan, nip_dekan, sumber_dana, tampilkan_paraf=False):
     if df_matrik.empty: return "<h3>Tidak ada data untuk dibandingkan pada versi dan sumber dana tersebut.</h3>"
     
     tot_m_global_atas = df_matrik['Tot_m'].sum() if not df_matrik.empty else 0
     
+    paraf_html = ""
+    if tampilkan_paraf:
+        paraf_html = """
+        <table style="width: 320px; border-collapse: collapse; float: left; margin-top: 20px; font-size: 8pt;">
+            <tr>
+                <th style="border: 1px solid black; padding: 4px; text-align: center; width: 10%;">No</th>
+                <th style="border: 1px solid black; padding: 4px; text-align: center; width: 65%;">Jabatan</th>
+                <th style="border: 1px solid black; padding: 4px; text-align: center; width: 25%;">Paraf</th>
+            </tr>
+            <tr><td style="border: 1px solid black; height: 35px; text-align: center; vertical-align: middle;">1</td><td style="border: 1px solid black; padding-left: 5px;">Wakil Dekan Bidang Keuangan dan Umum</td><td style="border: 1px solid black;"></td></tr>
+            <tr><td style="border: 1px solid black; height: 35px; text-align: center; vertical-align: middle;">2</td><td style="border: 1px solid black; padding-left: 5px;">Kepala Bagian Umum</td><td style="border: 1px solid black;"></td></tr>
+            <tr><td style="border: 1px solid black; height: 35px; text-align: center; vertical-align: middle;">3</td><td style="border: 1px solid black; padding-left: 5px;">Staf Perencanaan</td><td style="border: 1px solid black;"></td></tr>
+        </table>
+        """
+
     html = f"""
     <!DOCTYPE html>
     <html><head><meta charset="utf-8">
@@ -345,14 +398,31 @@ def generate_matrik_html(df_matrik, v_sebelum, v_menjadi, keg_map, tahun, tgl_ce
         Samarinda, {tgl_cetak}<br>Dekan<br><br><br><br><br>
         <b><u>{nama_dekan}</u></b><br>NIP. {nip_dekan}
     </div>
+    {paraf_html}
+    <div style="clear: both;"></div>
     </body></html>"""
     return html
 
-def generate_rkakl_html(df_utama, df_detail, kegiatan_code_map, tahun, tgl_cetak, nama_dekan, nip_dekan, sumber_dana):
+def generate_rkakl_html(df_utama, df_detail, kegiatan_code_map, tahun, tgl_cetak, nama_dekan, nip_dekan, sumber_dana, tampilkan_paraf=False):
     if df_utama.empty: return f"<h3>Belum ada data RAB aktif untuk sumber dana {sumber_dana}.</h3>"
     
     total_semua = df_detail[df_detail['ID_RAB'].isin(df_utama['ID_RAB'])]['Total_Biaya'].sum()
     
+    paraf_html = ""
+    if tampilkan_paraf:
+        paraf_html = """
+        <table style="width: 320px; border-collapse: collapse; float: left; margin-top: 20px; font-size: 8pt;">
+            <tr>
+                <th style="border: 1px solid black; padding: 4px; text-align: center; width: 10%;">No</th>
+                <th style="border: 1px solid black; padding: 4px; text-align: center; width: 65%;">Jabatan</th>
+                <th style="border: 1px solid black; padding: 4px; text-align: center; width: 25%;">Paraf</th>
+            </tr>
+            <tr><td style="border: 1px solid black; height: 35px; text-align: center; vertical-align: middle;">1</td><td style="border: 1px solid black; padding-left: 5px;">Wakil Dekan Bidang Keuangan dan Umum</td><td style="border: 1px solid black;"></td></tr>
+            <tr><td style="border: 1px solid black; height: 35px; text-align: center; vertical-align: middle;">2</td><td style="border: 1px solid black; padding-left: 5px;">Kepala Bagian Umum</td><td style="border: 1px solid black;"></td></tr>
+            <tr><td style="border: 1px solid black; height: 35px; text-align: center; vertical-align: middle;">3</td><td style="border: 1px solid black; padding-left: 5px;">Staf Perencanaan</td><td style="border: 1px solid black;"></td></tr>
+        </table>
+        """
+
     html = f"""
     <!DOCTYPE html>
     <html><head><meta charset="utf-8">
@@ -432,6 +502,8 @@ def generate_rkakl_html(df_utama, df_detail, kegiatan_code_map, tahun, tgl_cetak
         Samarinda, {tgl_cetak}<br>Dekan<br><br><br><br><br>
         <b><u>{nama_dekan}</u></b><br>NIP. {nip_dekan}
     </div>
+    {paraf_html}
+    <div style="clear: both;"></div>
     </body></html>"""
     return html
 
@@ -462,7 +534,6 @@ def show_page():
     list_tahun = list(dict.fromkeys(list_tahun)) 
     tahun_aktif = st.sidebar.selectbox("📅 Pilih Tahun Anggaran Aktif:", list_tahun)
 
-    # ---> TAB WAR ROOM (REVISI) DITAMBAHKAN <---
     tab_master, tab_buat, tab_daftar, tab_rekap, tab_matrik, tab_rapat = st.tabs([
         "🗂️ Master", "📝 Buat / Edit RAB", "📂 Arsip & Versi", "📊 RKAKL Aktif", "⚖️ Matrik Perubahan", "🛠️ Rapat Revisi"
     ])
@@ -621,7 +692,6 @@ def show_page():
                 idx_versi = list_versi.index(def_versi) if def_versi in list_versi else 0
                 rab_versi = col_u2.selectbox("Versi Anggaran (Periode)", list_versi, index=idx_versi)
 
-                # --- FITUR CATATAN BARU ---
                 def_catatan = df_edit_head.get('Catatan', pd.Series(['-'])).iloc[0] if not df_edit_head.empty else "-"
                 rab_catatan = st.text_input("📝 Catatan Revisi Khusus Kegiatan Ini", value=def_catatan)
                 if not rab_catatan.strip(): rab_catatan = "-"
@@ -753,7 +823,7 @@ def show_page():
             st.markdown("---")
             
             with st.expander(f"⚠️ Zona Berbahaya: Hapus Seluruh Data Versi '{pilih_v_arsip}' ({sumber_dana_arsip})"):
-                st.error("Tindakan ini akan menghapus PERMANEN seluruh kegiatan dan rincian pada versi dan sumber dana yang dipilih. Berguna jika Anda salah mengekstrak dokumen ganda.")
+                st.error("Tindakan ini akan menghapus PERMANEN seluruh kegiatan dan rincian pada versi dan sumber dana yang dipilih.")
                 konfirmasi_hapus = st.text_input(f"Ketik 'HAPUS' (huruf besar) untuk melanjutkan penghapusan {pilih_v_arsip} - {sumber_dana_arsip}:")
                 if st.button("🗑️ Eksekusi Hapus Versi", type="primary", use_container_width=True):
                     if konfirmasi_hapus == "HAPUS":
@@ -772,11 +842,10 @@ def show_page():
             pilih_keg_arsip = st.selectbox(f"3. Pilih Kegiatan (Dalam Versi {pilih_v_arsip} - {sumber_dana_arsip}):", keg_list_aktif, format_func=lambda x: x.title())
             
             with st.expander(f"📋 Duplikasi Seluruh Kegiatan Versi '{pilih_v_arsip}' ke Versi Lain"):
-                st.write("Salin seluruh kegiatan pada versi ini ke versi baru sekaligus. Sangat cocok digunakan sebelum membuat revisi RKAKL.")
                 target_versi = st.selectbox("Pilih Target Versi Baru:", ["Transisi","Indikatif", "Definitif", "Revisi 1", "Revisi 2", "Revisi 3", "Revisi 4", "Revisi 5", "Revisi 6", "Revisi 7", "Revisi 8", "Revisi 9", "Revisi 10","Revisi 11","Revisi 12","Revisi 13"])
                 if st.button(f"🚀 Salin Semua ke '{target_versi}'", type="primary"):
                     df_rab_utama.loc[df_rab_utama['Tahun'] == tahun_aktif, 'Is_Active'] = 0
-                    df_v_asal = df_utama_thn[df_utama_thn['Versi_RAB'] == pilih_v_arsip] # Salin semua sumber dana
+                    df_v_asal = df_utama_thn[df_utama_thn['Versi_RAB'] == pilih_v_arsip] 
                     for i, (_, row_keg) in enumerate(df_v_asal.iterrows()):
                         new_row = row_keg.copy()
                         new_id = f"RAB-{datetime.now().strftime('%Y%m%d%H%M%S%f')}-{i}"
@@ -815,12 +884,15 @@ def show_page():
                 st.markdown(f"**Catatan Revisi:** {head_terpilih.get('Catatan', pd.Series(['-'])).iloc[0]}")
                 st.dataframe(df_view[["Kode Akun", "Nama Akun Belanja", "Uraian", "Volume & Satuan", "Harga_Satuan", "Total_Biaya"]].style.format({"Harga_Satuan": format_rupiah, "Total_Biaya": format_rupiah}), hide_index=True, use_container_width=True)
 
+                # --- TOGGLE PARAF UNTUK RAB SATUAN ---
                 st.markdown("#### 🖨️ Cetak Dokumen Satuan")
+                tampilkan_paraf_rab = st.checkbox("Tampilkan Tabel Paraf (Khusus Arsip Hardcopy Internal)", key=f"paraf_{id_rab_aktif}")
+                
                 col_x1, col_x2, col_x3 = st.columns([1, 1, 2])
                 with col_x1:
-                    st.download_button("📥 Download Excel Resmi", data=export_excel_rab(head_terpilih, detail_terpilih, kegiatan_code_map), file_name=f"RAB_{s_dana}_{pilih_keg_arsip}_{pilih_v_arsip}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
+                    st.download_button("📥 Download Excel Resmi", data=export_excel_rab(head_terpilih, detail_terpilih, kegiatan_code_map, tampilkan_paraf_rab), file_name=f"RAB_{s_dana}_{pilih_keg_arsip}_{pilih_v_arsip}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
                 with col_x2:
-                    st.download_button("📑 Download PDF (Web)", data=export_pdf_rab(head_terpilih, detail_terpilih, "Portrait", kegiatan_code_map).encode('utf-8'), file_name=f"RAB_{s_dana}_{pilih_keg_arsip}_{pilih_v_arsip}.html", mime="text/html", use_container_width=True)
+                    st.download_button("📑 Download PDF (Web)", data=export_pdf_rab(head_terpilih, detail_terpilih, "Portrait", kegiatan_code_map, tampilkan_paraf_rab).encode('utf-8'), file_name=f"RAB_{s_dana}_{pilih_keg_arsip}_{pilih_v_arsip}.html", mime="text/html", use_container_width=True)
                 with col_x3:
                     if st.button("🗑️ Hapus Dokumen Ini", type="secondary", use_container_width=True):
                         df_rab_utama = df_rab_utama[df_rab_utama["ID_RAB"] != id_rab_aktif]
@@ -840,6 +912,9 @@ def show_page():
         nip_rkakl = col_r3.text_input("NIP Dekan", value="196211271989031004", key="nip_rkakl")
         
         sumber_dana_rkakl = st.radio("Pilih Sumber Dana yang Akan Ditampilkan/Dicetak:", ["BOPTN", "PNBP"], key="sd_rkakl", horizontal=True)
+        
+        # --- TOGGLE PARAF UNTUK RKAKL REKAP ---
+        tampilkan_paraf_rkakl = st.checkbox("Tampilkan Tabel Paraf (Khusus Arsip Hardcopy Internal)", key="paraf_rkakl")
         st.markdown("---")
         
         df_aktif = df_rab_utama[(df_rab_utama['Is_Active'] == 1) & (df_rab_utama['Tahun'] == tahun_aktif) & (df_rab_utama['Sumber_Dana'] == sumber_dana_rkakl)]
@@ -848,7 +923,7 @@ def show_page():
             st.info(f"Belum ada RAB aktif untuk sumber dana {sumber_dana_rkakl} tahun {tahun_aktif}.")
         else:
             df_det_aktif = df_rab_detail[df_rab_detail['ID_RAB'].isin(df_aktif['ID_RAB'])]
-            html_rkakl = generate_rkakl_html(df_aktif, df_det_aktif, kegiatan_code_map, tahun_aktif, tgl_cetak_rkakl, dekan_rkakl, nip_rkakl, sumber_dana_rkakl)
+            html_rkakl = generate_rkakl_html(df_aktif, df_det_aktif, kegiatan_code_map, tahun_aktif, tgl_cetak_rkakl, dekan_rkakl, nip_rkakl, sumber_dana_rkakl, tampilkan_paraf_rkakl)
             with st.container(border=True): components.html(html_rkakl, height=600, scrolling=True)
             st.download_button("📥 Cetak Buku Rekap RKAKL (.html)", data=html_rkakl.encode('utf-8'), file_name=f"RKAKL_{sumber_dana_rkakl}_FIB_{tahun_aktif}_{datetime.now().strftime('%Y%m%d')}.html", mime="text/html", type="primary")
 
@@ -877,6 +952,9 @@ def show_page():
             pilih_v2 = col_v2.selectbox("Pilih Versi Menjadi (Sesudah):", list_all_versions, index=list_all_versions.index(v2_def) if v2_def else 0)
             
             sumber_dana_matrik = st.radio("Pilih Sumber Dana Matrik:", ["BOPTN", "PNBP"], key="sd_matrik", horizontal=True)
+            
+            # --- TOGGLE PARAF UNTUK MATRIK ---
+            tampilkan_paraf_matrik = st.checkbox("Tampilkan Tabel Paraf (Khusus Arsip Hardcopy Internal)", key="paraf_matrik")
             
             if st.button("🔍 Generate Matrik Perbandingan", type="primary"):
                 df_u1 = df_thn[(df_thn['Versi_RAB'] == pilih_v1) & (df_thn['Sumber_Dana'] == sumber_dana_matrik)]
@@ -909,7 +987,7 @@ def show_page():
                 
                 if df_matrik.empty: st.info(f"Tidak ada data rincian pada kedua versi untuk sumber dana {sumber_dana_matrik}.")
                 else:
-                    html_matrik = generate_matrik_html(df_matrik, pilih_v1, pilih_v2, kegiatan_code_map, tahun_aktif, tgl_cetak_matrik, dekan_matrik, nip_matrik, sumber_dana_matrik)
+                    html_matrik = generate_matrik_html(df_matrik, pilih_v1, pilih_v2, kegiatan_code_map, tahun_aktif, tgl_cetak_matrik, dekan_matrik, nip_matrik, sumber_dana_matrik, tampilkan_paraf_matrik)
                     with st.container(border=True): components.html(html_matrik, height=600, scrolling=True)
                     st.download_button("📥 Cetak Matrik Perubahan (.html)", data=html_matrik.encode('utf-8'), file_name=f"Matrik_{sumber_dana_matrik}_{tahun_aktif}_{pilih_v1}_vs_{pilih_v2}.html", mime="text/html")
 
@@ -1007,7 +1085,6 @@ def show_page():
                         df_edit_view = pd.DataFrame([{"Target_Kegiatan": keg_name, "Akun_Belanja": list_akun_rapat[0] if list_akun_rapat else "-", "Uraian": "", "Vol_1": 1, "Sat_1": "Unit", "Vol_2": 1, "Sat_2": "-", "Harga_Satuan": 0}])
 
                     with st.expander(f"🟢 KEGIATAN: {keg_code} - {keg_name.title()}", expanded=True):
-                        # --- FITUR CATATAN REVISI PER KEGIATAN ---
                         cat_val = str(row_keg.get('Catatan', '-'))
                         if cat_val.lower() == 'nan' or not cat_val: cat_val = "-"
                         cat_input = st.text_input("📝 Catatan Revisi Kegiatan Ini:", value=cat_val, key=f"cat_{keg_id}")
@@ -1072,7 +1149,6 @@ def show_page():
                     for id_r in keg_to_id.values():
                         tot_b = new_alokasi.get(id_r, 0)
                         df_rab_utama.loc[df_rab_utama['ID_RAB'] == id_r, 'Alokasi'] = tot_b
-                        # Simpan Catatan Revisi per Kegiatan
                         c_baru = all_catatan_dict.get(id_r, "-")
                         df_rab_utama.loc[df_rab_utama['ID_RAB'] == id_r, 'Catatan'] = c_baru
                         
