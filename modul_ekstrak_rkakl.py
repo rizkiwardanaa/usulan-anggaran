@@ -207,7 +207,7 @@ def show_page():
         st.subheader("1. Setup Target Injeksi")
         col1, col2, col3 = st.columns(3)
         thn_target = col1.text_input("Tahun Anggaran", value=str(datetime.now().year + 1))
-        ver_target = col2.selectbox("Versi RKA", ["Indikatif", "Definitif", "Revisi 1", "Revisi 2", "Revisi 3"])
+        ver_target = col2.selectbox("Versi RKA", ["Transisi","Indikatif", "Definitif", "Revisi 1", "Revisi 2", "Revisi 3"])
         sumber_dana = col3.radio("Sumber Dana", ["BOPTN", "PNBP"], horizontal=True)
 
         file_pdf = st.file_uploader("2. Unggah Dokumen PDF RKAKL", type=['pdf'])
