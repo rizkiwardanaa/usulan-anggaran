@@ -64,7 +64,7 @@ def load_active_rab():
     conn.close()
     return df_utama, df_detail
 
-# --- FUNGSI AI GEMINI (JSON MODE) ---
+# --- FUNGSI AI GEMINI (AUTO-FALLBACK LIMIT) ---
 def generate_narasi_tor_json(kegiatan, total_anggaran, sasaran, list_belanja, poin_tambahan):
     prompt = f"""
     Anda adalah perencana anggaran ahli di Fakultas Ilmu Budaya Universitas Mulawarman. 
@@ -84,28 +84,48 @@ def generate_narasi_tor_json(kegiatan, total_anggaran, sasaran, list_belanja, po
 
     try:
         genai.configure(api_key=st.secrets["GEMINI_API_KEY_NEW"])
-        daftar_model = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
         
-        if not daftar_model: return None
+        # 1. Kumpulkan semua model yang bisa generate text
+        daftar_model_mentah = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
         
-        model_terpilih = daftar_model[0]
-        for m in daftar_model:
-            if 'flash' in m:
-                model_terpilih = m
-                break
-            elif 'pro' in m and 'vision' not in m:
-                model_terpilih = m
-                
-        nama_bersih = model_terpilih.replace("models/", "")
-        try:
-            model = genai.GenerativeModel(nama_bersih)
-            respons = model.generate_content(prompt)
-        except:
-            model = genai.GenerativeModel(model_terpilih)
-            respons = model.generate_content(prompt)
+        if not daftar_model_mentah: 
+            st.error("❌ Tidak ada model AI yang aktif pada API Key ini.")
+            return None
             
-        teks_respons = respons.text.replace('```json', '').replace('```', '').strip()
-        return json.loads(teks_respons)
+        # 2. Urutkan prioritas: 'flash' (paling cepat/kuota besar) -> 'pro' -> sisanya
+        model_prioritas = []
+        model_cadangan = []
+        for m in daftar_model_mentah:
+            if 'flash' in m.lower():
+                model_prioritas.insert(0, m)
+            elif 'pro' in m.lower() and 'vision' not in m.lower():
+                model_prioritas.append(m)
+            else:
+                model_cadangan.append(m)
+                
+        semua_model = model_prioritas + model_cadangan
+
+        # 3. LOOPING ANTI-LIMIT (Mencoba semua model satu per satu)
+        for nama_model in semua_model:
+            try:
+                nama_bersih = nama_model.replace("models/", "")
+                model = genai.GenerativeModel(nama_bersih)
+                respons = model.generate_content(prompt)
+                
+                teks_respons = respons.text.replace('```json', '').replace('```', '').strip()
+                hasil_json = json.loads(teks_respons)
+                
+                # Opsional: Memberitahu model mana yang akhirnya berhasil dipakai (berguna untuk pantauan)
+                st.toast(f"✅ Narasi berhasil digenerate menggunakan model: {nama_bersih}")
+                return hasil_json
+                
+            except Exception as loop_err:
+                # Jika model ini limit atau error, sistem akan mengabaikannya dan lanjut ke iterasi model berikutnya
+                continue
+                
+        # Jika kode sampai di titik ini, berarti SEMUA model sudah dicoba dan semuanya limit/gagal
+        st.error("❌ GAGAL: Semua model AI telah mencapai batas limit penggunaan (Quota Exceeded). Silakan coba lagi besok atau gunakan API Key cadangan.")
+        return None
             
     except Exception as e:
         st.error(f"❌ Gagal total menghubungi server AI. Detail Error: {e}")
@@ -115,7 +135,6 @@ def generate_narasi_tor_json(kegiatan, total_anggaran, sasaran, list_belanja, po
 def build_docx(meta, narasi, tampilkan_paraf=False):
     doc = Document()
     
-    # SETUP MARGIN CUSTOM
     for section in doc.sections:
         section.top_margin = Cm(2.0)
         section.bottom_margin = Cm(2.0)
@@ -190,7 +209,6 @@ def build_docx(meta, narasi, tampilkan_paraf=False):
     doc.add_paragraph("D. Biaya Yang Diperlukan").bold = True
     doc.add_paragraph(narasi.get('biaya_diperlukan', ''))
 
-    # TANDA TANGAN 
     doc.add_paragraph("\n")
     p_ttd = doc.add_paragraph()
     p_ttd.alignment = WD_ALIGN_PARAGRAPH.RIGHT
@@ -202,7 +220,6 @@ def build_docx(meta, narasi, tampilkan_paraf=False):
     if meta['nip']:
         r_nip = p_ttd.add_run(f"NIP {meta['nip']}")
 
-    # TABEL PARAF DOCX (KIRI BAWAH)
     if tampilkan_paraf:
         p_paraf_title = doc.add_paragraph()
         table_paraf = doc.add_table(rows=4, cols=3)
@@ -238,7 +255,6 @@ def generate_tor_html(meta, narasi, tampilkan_paraf=False):
 
     nip_html = f"<br>NIP {meta['nip']}" if meta['nip'] else ""
 
-    # STRING TABEL PARAF HTML
     paraf_html = ""
     if tampilkan_paraf:
         paraf_html = """
@@ -395,7 +411,7 @@ def show_page():
         st.markdown("AI Gemini akan membaca rincian RAB dan menyusun narasi TOR per bab.")
         
         if st.button("✨ Auto-Generate Narasi TOR", type="primary"):
-            with st.spinner("AI sedang menganalisis data dan merangkai paragraf..."):
+            with st.spinner("AI sedang mencoba beberapa model untuk menyusun paragraf..."):
                 list_barang = ", ".join(df_keg_det['Uraian'].tolist()[:15])
                 
                 hasil_json = generate_narasi_tor_json(
