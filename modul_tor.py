@@ -12,7 +12,6 @@ from datetime import datetime
 # --- KONEKSI DATABASE ---
 @st.cache_resource
 def get_engine():
-    # Menggunakan cache_resource agar engine hanya dibuat sekali untuk seluruh aplikasi
     return create_engine(st.secrets["DB_URL"], pool_size=5, max_overflow=10)
 
 engine = get_engine()
@@ -67,37 +66,27 @@ def load_active_rab():
 
 # --- FUNGSI AI GEMINI (JSON MODE) ---
 def generate_narasi_tor_json(kegiatan, total_anggaran, sasaran, list_belanja, poin_tambahan):
-    st.write(f"DEBUG: Kunci terbaca: {st.secrets.get('GEMINI_API_KEY_NEW', 'KOSONG')[:5]}...")
-    
     prompt = f"""
     Anda adalah perencana anggaran ahli di Fakultas Ilmu Budaya Universitas Mulawarman. 
     Tugas Anda adalah menulis komponen isi untuk Term of Reference (TOR) berdasarkan data:
     - Kegiatan: {kegiatan}, Sasaran: {sasaran}, Dana: {total_anggaran}, Item: {list_belanja}.
     - Catatan: {poin_tambahan}
     
-    ATURAN PENULISAN (SANGAT PENTING):
-    1. "dasar_hukum": Kembalikan dalam bentuk ARRAY JSON (List) berisi 4-6 string dasar hukum yang terpisah.
-    2. "gambaran_umum": Tuliskan dalam SATU paragraf yang komprehensif dan detail. Di dalam bagian ini, integrasikan juga poin-poin terkait Peraturan Menteri yang relevan dengan kegiatan ini agar lebih berbobot.
-    3. "penerima_manfaat", "metode_pelaksanaan", "tahapan_waktu": Masing-masing HARUS ditulis tepat dalam SATU PARAGRAF saja, namun buatlah mendetail, padat, dan tidak terlalu singkat.
-    4. "biaya_diperlukan": Tulis SATU PARAGRAF naratif yang mendetail bahwa total anggaran adalah Rp {total_anggaran} dari dana PNBP/FIB Unmul, tanpa rincian tabel.
+    ATURAN PENULISAN:
+    1. "dasar_hukum": Kembalikan dalam bentuk ARRAY JSON (List) berisi 4-6 string dasar hukum.
+    2. "gambaran_umum": Tuliskan dalam SATU paragraf yang komprehensif. Integrasikan Peraturan Menteri terkait.
+    3. "penerima_manfaat", "metode_pelaksanaan", "tahapan_waktu": Masing-masing SATU PARAGRAF detail.
+    4. "biaya_diperlukan": Tulis SATU PARAGRAF mendetail bahwa total anggaran adalah Rp {total_anggaran} dari dana BOPTN/PNBP FIB Unmul, tanpa tabel.
     
-    Kembalikan output JSON murni (tanpa markdown) dengan kunci persis seperti ini: 
+    Kembalikan output JSON murni (tanpa markdown) dengan kunci: 
     "dasar_hukum", "gambaran_umum", "penerima_manfaat", "metode_pelaksanaan", "tahapan_waktu", "biaya_diperlukan".
     """
 
     try:
         genai.configure(api_key=st.secrets["GEMINI_API_KEY_NEW"])
+        daftar_model = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
         
-        daftar_model = []
-        for m in genai.list_models():
-            if 'generateContent' in m.supported_generation_methods:
-                daftar_model.append(m.name)
-                
-        if not daftar_model:
-            st.error("❌ Gagal: Akun API Key Anda belum diberikan akses ke model AI apa pun oleh Google.")
-            return None
-            
-        st.info(f"🔍 Diagnostik: Model yang terdeteksi tersedia: {', '.join(daftar_model)}")
+        if not daftar_model: return None
         
         model_terpilih = daftar_model[0]
         for m in daftar_model:
@@ -108,11 +97,10 @@ def generate_narasi_tor_json(kegiatan, total_anggaran, sasaran, list_belanja, po
                 model_terpilih = m
                 
         nama_bersih = model_terpilih.replace("models/", "")
-        
         try:
             model = genai.GenerativeModel(nama_bersih)
             respons = model.generate_content(prompt)
-        except Exception:
+        except:
             model = genai.GenerativeModel(model_terpilih)
             respons = model.generate_content(prompt)
             
@@ -123,12 +111,11 @@ def generate_narasi_tor_json(kegiatan, total_anggaran, sasaran, list_belanja, po
         st.error(f"❌ Gagal total menghubungi server AI. Detail Error: {e}")
         return None
 
-
 # --- BUILDER MICROSOFT WORD (.DOCX) ---
-def build_docx(meta, narasi):
+def build_docx(meta, narasi, tampilkan_paraf=False):
     doc = Document()
     
-    # SETUP MARGIN CUSTOM (Top/Bot 2cm, L/R 2.20cm, Gutter 0)
+    # SETUP MARGIN CUSTOM
     for section in doc.sections:
         section.top_margin = Cm(2.0)
         section.bottom_margin = Cm(2.0)
@@ -136,19 +123,16 @@ def build_docx(meta, narasi):
         section.right_margin = Cm(2.20)
         section.gutter = Cm(0)
     
-    # KOP & JUDUL
     p_judul = doc.add_paragraph()
     p_judul.alignment = WD_ALIGN_PARAGRAPH.CENTER
     r_judul = p_judul.add_run("KERANGKA ACUAN KERJA/TERM OF REFERENCE\n")
     r_judul.bold = True
     r_judul.font.size = Pt(12)
     
-    # SUB JUDUL (NAMA KEGIATAN)
     r_subjudul = p_judul.add_run(f"{meta['keg_title'].upper()}\n")
     r_subjudul.bold = True
     r_subjudul.font.size = Pt(12)
     
-    # METADATA TABLE (Borderless)
     table = doc.add_table(rows=0, cols=3)
     for row in table.rows:
         row.cells[0].width = Inches(2.0)
@@ -175,7 +159,6 @@ def build_docx(meta, narasi):
     add_meta_row("Volume RO", f"{meta['vol']}")
     add_meta_row("Satuan RO", meta['sat'])
 
-    # BAB A
     doc.add_paragraph("A. Latar Belakang").bold = True
     doc.add_paragraph("1. Dasar Hukum").bold = True
     
@@ -194,11 +177,9 @@ def build_docx(meta, narasi):
     doc.add_paragraph("2. Gambaran Umum").bold = True
     doc.add_paragraph(narasi.get('gambaran_umum', ''))
     
-    # BAB B
     doc.add_paragraph("B. Penerima Manfaat").bold = True
     doc.add_paragraph(narasi.get('penerima_manfaat', ''))
     
-    # BAB C
     doc.add_paragraph("C. Strategi Pencapaian Keluaran").bold = True
     doc.add_paragraph("1. Metode Pelaksanaan").bold = True
     doc.add_paragraph(narasi.get('metode_pelaksanaan', ''))
@@ -206,32 +187,48 @@ def build_docx(meta, narasi):
     doc.add_paragraph("2. Tahapan dan Waktu Pelaksanaan").bold = True
     doc.add_paragraph(narasi.get('tahapan_waktu', ''))
     
-    # BAB D
     doc.add_paragraph("D. Biaya Yang Diperlukan").bold = True
     doc.add_paragraph(narasi.get('biaya_diperlukan', ''))
 
-    # TANDA TANGAN (DEKAN)
+    # TANDA TANGAN 
     doc.add_paragraph("\n")
     p_ttd = doc.add_paragraph()
     p_ttd.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-    
     p_ttd.add_run(f"Samarinda, {meta['tgl_cetak']}\n")
     p_ttd.add_run(f"Dekan\n\n\n\n")
     
     r_nama = p_ttd.add_run(f"{meta['ketua']}\n")
     r_nama.bold = True
-    
     if meta['nip']:
         r_nip = p_ttd.add_run(f"NIP {meta['nip']}")
-        r_nip.bold = False
-    
+
+    # TABEL PARAF DOCX (KIRI BAWAH)
+    if tampilkan_paraf:
+        p_paraf_title = doc.add_paragraph()
+        table_paraf = doc.add_table(rows=4, cols=3)
+        table_paraf.style = 'Table Grid'
+        
+        for row in table_paraf.rows:
+            row.cells[0].width = Cm(1.2)
+            row.cells[1].width = Cm(4.5)
+            row.cells[2].width = Cm(3.0)
+            
+        hdr_cells = table_paraf.rows[0].cells
+        hdr_cells[0].text = 'No'
+        hdr_cells[1].text = 'Jabatan'
+        hdr_cells[2].text = 'Paraf'
+        
+        for i in range(1, 4):
+            table_paraf.rows[i].cells[0].text = str(i)
+            table_paraf.rows[i].cells[1].text = ""
+            table_paraf.rows[i].cells[2].text = "\n\n" # Spasi agar baris lebih tinggi
+
     output = BytesIO()
     doc.save(output)
     return output.getvalue()
 
-
 # --- BUILDER PDF / HTML PRINT-READY ---
-def generate_tor_html(meta, narasi):
+def generate_tor_html(meta, narasi, tampilkan_paraf=False):
     dh_data = narasi.get('dasar_hukum', [])
     if isinstance(dh_data, list):
         dh_html = "<ul style='margin-top: 0; padding-left: 20px;'>" + "".join(f"<li>{item}</li>" for item in dh_data) + "</ul>"
@@ -239,6 +236,22 @@ def generate_tor_html(meta, narasi):
         dh_html = str(dh_data).replace('\n', '<br>')
 
     nip_html = f"<br>NIP {meta['nip']}" if meta['nip'] else ""
+
+    # STRING TABEL PARAF HTML
+    paraf_html = ""
+    if tampilkan_paraf:
+        paraf_html = """
+        <table style="width: 250px; border-collapse: collapse; float: left; margin-top: 60px; font-size: 8.5pt;">
+            <tr>
+                <th style="border: 1px solid black; padding: 4px; text-align: center; width: 15%;">No</th>
+                <th style="border: 1px solid black; padding: 4px; text-align: center; width: 55%;">Jabatan</th>
+                <th style="border: 1px solid black; padding: 4px; text-align: center; width: 30%;">Paraf</th>
+            </tr>
+            <tr><td style="border: 1px solid black; height: 30px; text-align: center; vertical-align: middle;">1</td><td style="border: 1px solid black;"></td><td style="border: 1px solid black;"></td></tr>
+            <tr><td style="border: 1px solid black; height: 30px; text-align: center; vertical-align: middle;">2</td><td style="border: 1px solid black;"></td><td style="border: 1px solid black;"></td></tr>
+            <tr><td style="border: 1px solid black; height: 30px; text-align: center; vertical-align: middle;">3</td><td style="border: 1px solid black;"></td><td style="border: 1px solid black;"></td></tr>
+        </table>
+        """
 
     html = f"""
     <!DOCTYPE html>
@@ -302,6 +315,10 @@ def generate_tor_html(meta, narasi):
         Dekan<br><br><br><br><br>
         <b>{meta['ketua']}</b>{nip_html}
     </div>
+    
+    {paraf_html}
+    <div style="clear: both;"></div>
+    
     </body></html>
     """
     return html
@@ -340,11 +357,9 @@ def show_page():
         st.subheader("Informasi Operasional & Penanggung Jawab")
         
         col1, col2, col3 = st.columns(3)
-        # SET DEFAULT VALUE NAMA & NIP SESUAI PERMINTAAN
         in_ketua = col1.text_input("Nama Pejabat", value="Prof. Dr. M. Bahri Arifin, M.Hum.")
         in_nip = col2.text_input("NIP", value="196211271989031004")
         
-        # OTOMATIS KONVERSI FORMAT TANGGAL KE INDONESIA
         tgl_default = format_tgl_indo(df_keg_utama['Tanggal'])
         in_tgl_cetak = col3.text_input("Tanggal Cetak", value=tgl_default)
         
@@ -429,10 +444,14 @@ def show_page():
         if st.session_state.tor_json:
             st.success("Narasi telah siap. Metadata akan dilampirkan otomatis ke dalam dokumen.")
             
+            # --- TOGGLE PARAF DITAMBAHKAN DI SINI ---
+            tampilkan_paraf = st.checkbox("Tampilkan Tabel Paraf (Khusus Arsip Hardcopy Internal)", value=False)
+            st.markdown("---")
+            
             col_x1, col_x2 = st.columns(2)
             
             with col_x1:
-                file_word = build_docx(meta_tor, st.session_state.tor_json)
+                file_word = build_docx(meta_tor, st.session_state.tor_json, tampilkan_paraf)
                 st.download_button(
                     label="📥 Download TOR (.docx)",
                     data=file_word,
@@ -442,7 +461,7 @@ def show_page():
                 )
             
             with col_x2:
-                html_print = generate_tor_html(meta_tor, st.session_state.tor_json)
+                html_print = generate_tor_html(meta_tor, st.session_state.tor_json, tampilkan_paraf)
                 st.download_button(
                     label="📑 Cetak PDF (HTML Print-Ready)",
                     data=html_print.encode('utf-8'),
