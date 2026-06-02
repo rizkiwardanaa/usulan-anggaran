@@ -447,7 +447,7 @@ def show_page():
     df_m_akun = load_table("rab_m_akun", ["Sub_Komponen", "Account_Code", "Account_Name", "Sumber_Dana"]) 
     df_m_pejabat = load_table("rab_m_pejabat", ["Jabatan", "Nama", "NIP"])
 
-    df_rab_utama = load_table("rab_utama", ["ID_RAB", "Tanggal", "Tahun", "Tgl_Cetak", "Sumber_Dana", "KRO", "RO", "Komponen", "Sub_Komponen", "Kegiatan", "Sasaran", "Volume", "Satuan", "Alokasi", "Jabatan", "Nama_Pejabat", "NIP_Pejabat", "Versi_RAB", "Is_Active"])
+    df_rab_utama = load_table("rab_utama", ["ID_RAB", "Tanggal", "Tahun", "Tgl_Cetak", "Sumber_Dana", "KRO", "RO", "Komponen", "Sub_Komponen", "Kegiatan", "Sasaran", "Volume", "Satuan", "Alokasi", "Jabatan", "Nama_Pejabat", "NIP_Pejabat", "Versi_RAB", "Is_Active", "Catatan"])
     df_rab_detail = load_table("rab_detail", ["ID_RAB", "Akun_Belanja", "Uraian", "Vol_1", "Sat_1", "Vol_2", "Sat_2", "Harga_Satuan", "Total_Biaya"])
 
     unique_kegiatans = sorted(df_rab_utama['Kegiatan'].unique()) if not df_rab_utama.empty else []
@@ -621,6 +621,11 @@ def show_page():
                 idx_versi = list_versi.index(def_versi) if def_versi in list_versi else 0
                 rab_versi = col_u2.selectbox("Versi Anggaran (Periode)", list_versi, index=idx_versi)
 
+                # --- FITUR CATATAN BARU ---
+                def_catatan = df_edit_head.get('Catatan', pd.Series(['-'])).iloc[0] if not df_edit_head.empty else "-"
+                rab_catatan = st.text_input("📝 Catatan Revisi Khusus Kegiatan Ini", value=def_catatan)
+                if not rab_catatan.strip(): rab_catatan = "-"
+
             with st.container(border=True):
                 st.subheader("3. Rincian Belanja")
                 df_akun_f = df_m_akun[(df_m_akun['Sumber_Dana'] == sumber_buat) & (df_m_akun['Sub_Komponen'] == pilih_subkomp)]
@@ -691,7 +696,7 @@ def show_page():
                             "Sumber_Dana": sumber_buat, "KRO": pilih_kro, "RO": pilih_ro, "Komponen": pilih_komp, "Sub_Komponen": pilih_subkomp,
                             "Kegiatan": rab_kegiatan.strip(), "Sasaran": rab_sasaran, "Volume": rab_vol, "Satuan": rab_satuan, "Alokasi": total_rab_live,
                             "Jabatan": dt_pjb['Jabatan'], "Nama_Pejabat": dt_pjb['Nama'], "NIP_Pejabat": dt_pjb['NIP'],
-                            "Versi_RAB": rab_versi, "Is_Active": is_act
+                            "Versi_RAB": rab_versi, "Is_Active": is_act, "Catatan": rab_catatan
                         }])
                         df_rab_utama = pd.concat([df_rab_utama, new_utama], ignore_index=True)
                         save_table(df_rab_utama, "rab_utama")
@@ -807,6 +812,7 @@ def show_page():
                 st.markdown(f"**Identitas Kegiatan:** {keg_code_view} - {pilih_keg_arsip.title()}")
                 st.markdown(f"**Klasifikasi Dokumen:** {head_terpilih['KRO'].iloc[0]} ➔ {head_terpilih['RO'].iloc[0]}")
                 st.markdown(f"**Total Alokasi Anggaran ({s_dana}):** Rp {format_rupiah(detail_terpilih['Total_Biaya'].sum())}")
+                st.markdown(f"**Catatan Revisi:** {head_terpilih.get('Catatan', pd.Series(['-'])).iloc[0]}")
                 st.dataframe(df_view[["Kode Akun", "Nama Akun Belanja", "Uraian", "Volume & Satuan", "Harga_Satuan", "Total_Biaya"]].style.format({"Harga_Satuan": format_rupiah, "Total_Biaya": format_rupiah}), hide_index=True, use_container_width=True)
 
                 st.markdown("#### 🖨️ Cetak Dokumen Satuan")
@@ -953,7 +959,7 @@ def show_page():
                                 "Sumber_Dana": sumber_dana_rapat, "KRO": s_kro, "RO": s_ro, "Komponen": s_komp, "Sub_Komponen": s_sub,
                                 "Kegiatan": s_keg.strip(), "Sasaran": "-", "Volume": 1, "Satuan": "Layanan", "Alokasi": 0,
                                 "Jabatan": dt_pjb['Jabatan'], "Nama_Pejabat": dt_pjb['Nama'], "NIP_Pejabat": dt_pjb['NIP'],
-                                "Versi_RAB": versi_rapat, "Is_Active": 0
+                                "Versi_RAB": versi_rapat, "Is_Active": 0, "Catatan": "-"
                             }])
                             df_rab_utama = pd.concat([df_rab_utama, new_u], ignore_index=True)
                             save_table(df_rab_utama, "rab_utama")
@@ -964,14 +970,13 @@ def show_page():
             if df_ur.empty:
                 st.info(f"Belum ada kegiatan dengan sumber dana {sumber_dana_rapat} pada versi {versi_rapat}.")
             else:
-                # PLACEHOLDER UNTUK PANEL HUD AGAR TAMPIL DI ATAS TAPI DIHITUNG TERAKHIR
                 hud_placeholder = st.empty()
                 st.markdown("### 📋 Lembar Kerja Berjenjang (Hierarchical Worksheet)")
 
-                # MENGURUTKAN DATA SESUAI HIRARKI KRO -> RO -> KOMPONEN -> KEGIATAN
                 df_ur_sorted = df_ur.sort_values(by=['KRO', 'RO', 'Komponen', 'Sub_Komponen', 'Kegiatan'])
                 
                 all_valid_edits = []
+                all_catatan_dict = {}
                 pagu_live = 0
                 
                 c_kro, c_ro, c_komp, c_sub = "", "", "", ""
@@ -1002,6 +1007,12 @@ def show_page():
                         df_edit_view = pd.DataFrame([{"Target_Kegiatan": keg_name, "Akun_Belanja": list_akun_rapat[0] if list_akun_rapat else "-", "Uraian": "", "Vol_1": 1, "Sat_1": "Unit", "Vol_2": 1, "Sat_2": "-", "Harga_Satuan": 0}])
 
                     with st.expander(f"🟢 KEGIATAN: {keg_code} - {keg_name.title()}", expanded=True):
+                        # --- FITUR CATATAN REVISI PER KEGIATAN ---
+                        cat_val = str(row_keg.get('Catatan', '-'))
+                        if cat_val.lower() == 'nan' or not cat_val: cat_val = "-"
+                        cat_input = st.text_input("📝 Catatan Revisi Kegiatan Ini:", value=cat_val, key=f"cat_{keg_id}")
+                        all_catatan_dict[keg_id] = cat_input.strip() if cat_input.strip() else "-"
+                        
                         edited_keg = st.data_editor(
                             df_edit_view,
                             num_rows="dynamic",
@@ -1061,8 +1072,11 @@ def show_page():
                     for id_r in keg_to_id.values():
                         tot_b = new_alokasi.get(id_r, 0)
                         df_rab_utama.loc[df_rab_utama['ID_RAB'] == id_r, 'Alokasi'] = tot_b
+                        # Simpan Catatan Revisi per Kegiatan
+                        c_baru = all_catatan_dict.get(id_r, "-")
+                        df_rab_utama.loc[df_rab_utama['ID_RAB'] == id_r, 'Catatan'] = c_baru
                         
                     save_table(df_rab_detail, "rab_detail")
                     save_table(df_rab_utama, "rab_utama")
-                    st.success("Perubahan berhasil diketok palu dan disimpan permanen!")
+                    st.success("Perubahan & Catatan berhasil diketok palu dan disimpan permanen!")
                     st.rerun()
