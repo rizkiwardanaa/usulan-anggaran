@@ -939,7 +939,7 @@ def show_page():
                 st.write(f"Tambahkan wadah kegiatan baru ke versi ini khusus untuk sumber dana {sumber_dana_rapat}.")
                 with st.form("form_suntik_kegiatan"):
                     s_kro = st.selectbox("KRO", df_m_kro[df_m_kro['Sumber_Dana'] == sumber_dana_rapat]['KRO'].tolist() or ["-"])
-                    s_ro = st.selectbox("RO", df_m_ro[df_m_ro['Sumber_Dana'] == sumber_dana_rapat]['RO'].ROlist() if not df_m_ro.empty else ["-"])
+                    s_ro = st.selectbox("RO", df_m_ro[df_m_ro['Sumber_Dana'] == sumber_dana_rapat]['RO'].tolist() if not df_m_ro.empty else ["-"])
                     s_komp = st.selectbox("Komponen", df_m_komp[df_m_komp['Sumber_Dana'] == sumber_dana_rapat]['Komponen'].tolist() or ["-"])
                     s_sub = st.selectbox("Sub Komponen", df_m_subkomp[df_m_subkomp['Sumber_Dana'] == sumber_dana_rapat]['Sub_Komponen'].tolist() or ["-"])
                     s_keg = st.text_input("Nama Kegiatan Baru", placeholder="Cth: Honor Panitia Kegiatan Tambahan")
