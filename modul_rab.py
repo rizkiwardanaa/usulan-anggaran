@@ -11,52 +11,55 @@ DB_URL = st.secrets["DB_URL"]
 engine = create_engine(DB_URL, pool_size=10, max_overflow=20)
 
 # =====================================================================
-# FUNGSI DATABASE & PENGAMAN ANTI-CRASH (ROLLBACK OTOMATIS)
+# FUNGSI DATABASE & PENGAMAN ANTI-CRASH (AUTO-RETRY)
 # =====================================================================
 @st.cache_data(ttl=300)
 def load_table(table_name, default_cols):
-    try:
-        with engine.connect() as conn:
-            df = pd.read_sql(f"SELECT * FROM {table_name}", conn)
-            
-        for col in default_cols:
-            if col not in df.columns:
-                if "Vol" in col or "Harga" in col or "Total" in col: df[col] = 1 if "Vol" in col else 0
-                elif col == "Tahun": df[col] = str(datetime.now().year + 1)
-                elif col == "Sumber_Dana": df[col] = "BOPTN"
-                elif col == "Sub_Komponen" and table_name == "rab_m_akun": df[col] = "-"
-                elif col == "Versi_RAB": df[col] = "Indikatif"
-                elif col == "Is_Active": df[col] = 1
-                else: df[col] = "-"
+    # Fitur Auto-Retry: Mencoba 2 kali jika koneksi sibuk/menggantung
+    for attempt in range(2):
+        try:
+            with engine.connect() as conn:
+                df = pd.read_sql(f"SELECT * FROM {table_name}", conn)
                 
-        if "Is_Active" in df.columns:
-            df["Is_Active"] = pd.to_numeric(df["Is_Active"], errors='coerce').fillna(1).astype(int)
-        return df
-        
-    except Exception as e:
-        engine.dispose() # SABUK PENGAMAN 1: Hancurkan koneksi yang macet/error
-        err_str = str(e).lower()
-        if "does not exist" in err_str or "not found" in err_str or "relation" in err_str:
-            df = pd.DataFrame(columns=default_cols)
-            try:
-                with engine.begin() as conn: # SABUK PENGAMAN 2: Gunakan begin() untuk auto-rollback
-                    df.to_sql(table_name, conn, if_exists="append", index=False)
-            except:
-                engine.dispose()
+            for col in default_cols:
+                if col not in df.columns:
+                    if "Vol" in col or "Harga" in col or "Total" in col: df[col] = 1 if "Vol" in col else 0
+                    elif col == "Tahun": df[col] = str(datetime.now().year + 1)
+                    elif col == "Sumber_Dana": df[col] = "BOPTN"
+                    elif col == "Sub_Komponen" and table_name == "rab_m_akun": df[col] = "-"
+                    elif col == "Versi_RAB": df[col] = "Indikatif"
+                    elif col == "Is_Active": df[col] = 1
+                    else: df[col] = "-"
+                    
+            if "Is_Active" in df.columns:
+                df["Is_Active"] = pd.to_numeric(df["Is_Active"], errors='coerce').fillna(1).astype(int)
             return df
-        else:
-            st.warning(f"Sistem memulihkan koneksi terputus ke tabel {table_name}...")
-            return pd.DataFrame(columns=default_cols)
+            
+        except Exception as e:
+            engine.dispose() # Hancurkan koneksi yang macet
+            err_str = str(e).lower()
+            if "does not exist" in err_str or "not found" in err_str or "relation" in err_str:
+                df = pd.DataFrame(columns=default_cols)
+                try:
+                    with engine.begin() as conn:
+                        df.to_sql(table_name, conn, if_exists="append", index=False)
+                except:
+                    pass
+                return df
+            
+            if attempt == 1: # Jika percobaan kedua masih gagal
+                st.cache_data.clear() # Cegah data kosong tersimpan di memori
+                st.error(f"Sistem sedang sibuk. Koneksi ke {table_name} terputus. Silakan refresh halaman.")
+                st.stop()
 
 def save_table(df, table_name):
     try:
-        # Gunakan engine.begin() agar jika gagal, koneksi otomatis melakukan ROLLBACK murni
         with engine.begin() as conn:
             df.to_sql(table_name, conn, if_exists="replace", index=False)
         st.cache_data.clear()
         return True
     except Exception as e:
-        engine.dispose() # Hancurkan pool yang rusak agar pengguna bisa mencoba simpan lagi
+        engine.dispose() 
         st.error(f"🚨 Koneksi database sibuk/terputus. Koneksi telah di-reset otomatis. Silakan klik tombol Simpan sekali lagi! (Detail: {str(e)[:100]}...)")
         return False
 
@@ -711,7 +714,10 @@ def show_page():
                 st.subheader("3. Rincian Belanja")
                 df_akun_f = df_m_akun[(df_m_akun['Sumber_Dana'] == sumber_buat) & (df_m_akun['Sub_Komponen'] == pilih_subkomp)]
                 opsi_akun = [f"{row['Account_Code']} - {row['Account_Name']}" for _, row in df_akun_f.iterrows()]
-                if not opsi_akun: opsi_akun = ["- Tidak ada akun terpetakan -"]
+                if not opsi_akun: 
+                    opsi_akun = ["- Tidak ada akun terpetakan -"]
+                else:
+                    opsi_akun = list(dict.fromkeys(opsi_akun)) # Penyaring Duplikat
                 
                 if is_edit_mode and not df_edit_det.empty:
                     df_det_edit = df_edit_det.rename(columns={"Akun_Belanja":"Akun Belanja", "Uraian":"Uraian Belanja", "Vol_1":"Vol 1", "Sat_1":"Sat 1", "Vol_2":"Vol 2", "Sat_2":"Sat 2", "Harga_Satuan":"Harga Satuan"})
@@ -1029,7 +1035,10 @@ def show_page():
             list_keg_rapat = list(keg_to_id.keys()) if keg_to_id else ["-"]
             
             list_akun_raw = df_m_akun[df_m_akun['Sumber_Dana'] == sumber_dana_rapat]
-            list_akun_rapat = (list_akun_raw['Account_Code'].astype(str) + " - " + list_akun_raw['Account_Name']).tolist() if not list_akun_raw.empty else ["-"]
+            if not list_akun_raw.empty:
+                list_akun_rapat = (list_akun_raw['Account_Code'].astype(str) + " - " + list_akun_raw['Account_Name']).drop_duplicates().tolist()
+            else:
+                list_akun_rapat = ["-"]
 
             with st.expander("⚡ Suntik Kegiatan Mendadak (Buat Wadah Baru)"):
                 st.write(f"Tambahkan wadah kegiatan baru ke versi ini khusus untuk sumber dana {sumber_dana_rapat}.")
@@ -1151,7 +1160,6 @@ def show_page():
 
                 st.markdown("---")
                 
-                # TOMBOL KETOK PALU DAN TOMBOL DOWNLOAD BACKUP DRAF
                 col_act1, col_act2 = st.columns([1, 1])
                 with col_act1:
                     if st.button("💾 Ketok Palu: Simpan Hasil Revisi ke Database", type="primary", use_container_width=True):
