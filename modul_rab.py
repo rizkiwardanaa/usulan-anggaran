@@ -995,7 +995,7 @@ def show_page():
     # TAB 6: RAPAT & SIMULASI REVISI (WAR ROOM)
     # -----------------------------------------------------------------
     with tab_rapat:
-        st.subheader("🛠️ War Room: Mode Edit Berjenjang (Hierarchical Editor)")
+        st.subheader("🛠️ War Room: Mode Edit Matrik Revisi")
         st.info("Edit rincian belanja dengan nyaman berdasarkan hirarki RKAKL. Sisa dana akan terhitung otomatis di Panel atas.")
 
         df_thn_rapat = df_rab_utama[df_rab_utama['Tahun'] == tahun_aktif]
