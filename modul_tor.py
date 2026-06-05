@@ -112,8 +112,7 @@ def generate_narasi_tor_json(kegiatan, total_anggaran, sasaran, list_belanja, po
                 model = genai.GenerativeModel(nama_bersih)
                 respons = model.generate_content(prompt)
                 
-                teks_respons = respons.text.replace('```json', '').replace('
-```', '').strip()
+                teks_respons = respons.text.replace('```json', '').replace('```', '').strip()
                 hasil_json = json.loads(teks_respons)
                 
                 st.toast(f"✅ Narasi berhasil digenerate menggunakan model: {nama_bersih}")
