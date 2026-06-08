@@ -1284,3 +1284,5 @@ def show_page():
                                 use_container_width=True,
                                 help="Klik ini untuk menyimpan data editor Anda ke Excel lokal sebagai perlindungan terhadap koneksi yang terputus."
                             )
+# (Letakkan di baris paling akhir file, jangan diberi indentasi/spasi di depannya)
+show_page()
