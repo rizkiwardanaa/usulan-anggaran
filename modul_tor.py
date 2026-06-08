@@ -492,3 +492,5 @@ def show_page():
                 )
         else:
             st.warning("⚠️ Anda belum menyusun narasi. Silakan klik 'Auto-Generate Narasi TOR' di tab 2.")
+# (Letakkan di baris paling akhir file, jangan diberi indentasi/spasi di depannya)
+show_page()
