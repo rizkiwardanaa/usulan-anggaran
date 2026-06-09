@@ -44,15 +44,21 @@ with col_form:
     with st.form("form_user"):
         input_uname = st.text_input("Username (Tanpa Spasi, Huruf Kecil)")
         input_pass = st.text_input("Password", type="password")
-        input_nama = st.text_input("Nama Tampil (Contoh: Sastra Jepang)")
-        input_role = st.selectbox("Role Identitas", ["prodi", "admin","dekan","wakil dekan","kabag"])
+        input_nama = st.text_input("Nama Tampil (Contoh: Dekan FIB)")
+        
+        # --- PERUBAHAN DISINI: Penambahan Role Pimpinan ---
+        input_role = st.selectbox(
+            "Pilih Hak Akses (Role):", 
+            ["prodi", "pimpinan", "admin"],
+            format_func=lambda x: "1. Prodi (Hanya Buat Usulan)" if x == "prodi" else "2. Pimpinan (Hanya Review Usulan)" if x == "pimpinan" else "3. Super Admin (Akses Sistem Penuh)"
+        )
         
         # Pilihan Akses Menu dengan Checkbox/Multiselect
         akses_pilihan = st.multiselect(
             "Izinkan Akses ke Modul Berikut:",
             options=list(MENU_OPTIONS.keys()),
             format_func=lambda x: MENU_OPTIONS[x],
-            default=["kompiler"] # Default setiap prodi bisa buka dashboard
+            default=["kompiler"] # Default setiap user minimal bisa buka dashboard
         )
         
         if st.form_submit_button("Simpan Data Pengguna", type="primary"):
