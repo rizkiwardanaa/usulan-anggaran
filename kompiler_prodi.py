@@ -1,8 +1,5 @@
 import streamlit as st
 
-# ==========================================
-# KONFIGURASI HALAMAN UTAMA (Harus Paling Atas)
-# ==========================================
 st.set_page_config(page_title="Sistem Perencanaan FIB", page_icon="📝", layout="wide")
 
 # ==========================================
@@ -21,7 +18,6 @@ USER_CREDENTIALS = {
 if "logged_in" not in st.session_state:
     st.session_state.update({"logged_in": False, "role": None, "nama_user": None, "username": None})
 
-# --- HALAMAN LOGIN ---
 if not st.session_state["logged_in"]:
     _, col_tengah, _ = st.columns([1, 2, 1])
     with col_tengah:
@@ -39,15 +35,20 @@ if not st.session_state["logged_in"]:
     st.stop()
 
 # ==========================================
-# NAVBAR BERJENJANG (GROUPED NAVIGATION)
+# NAVBAR BERJENJANG DENGAN FOLDER
 # ==========================================
-page_kompiler = st.Page("modul_kompiler.py", title="Dashboard Monitoring", icon="📊")
+page_kompiler = st.Page("modul_utama/modul_kompiler.py", title="Dashboard Monitoring", icon="📊")
 
-# (Ini wadah sementara untuk modul_rab sebelum kita pecah di langkah 2)
-page_rab_sementara = st.Page("modul_rab.py", title="Pengolah RAB (Segera Dipecah)", icon="📦")
+# Pecahan RAB di dalam folder modul_rab/
+page_rab_master  = st.Page("modul_rab/rab_master.py", title="1. Master Data", icon="🗂️")
+page_rab_buat    = st.Page("modul_rab/rab_buat.py", title="2. Buat / Edit RAB", icon="📝")
+page_rab_arsip   = st.Page("modul_rab/rab_arsip.py", title="3. Arsip & Versi", icon="📂")
+page_rab_rkakl   = st.Page("modul_rab/rab_rkakl.py", title="4. Rekap RKAKL", icon="📊")
+page_rab_matrik  = st.Page("modul_rab/rab_matrik.py", title="5. Matrik Perubahan", icon="⚖️")
+page_rab_warroom = st.Page("modul_rab/rab_warroom.py", title="6. Rapat Revisi", icon="🛠️")
 
-page_tor = st.Page("modul_tor.py", title="Generator TOR", icon="🤖")
-page_ekstrak = st.Page("modul_ekstrak_rkakl.py", title="Ekstrak RKAKL PDF", icon="📥")
+page_tor = st.Page("modul_ekstra/modul_tor.py", title="Generator TOR", icon="🤖")
+page_ekstrak = st.Page("modul_ekstra/modul_ekstrak_rkakl.py", title="Ekstrak RKAKL PDF", icon="📥")
 
 with st.sidebar:
     st.header("Sistem Perencanaan")
@@ -57,11 +58,10 @@ with st.sidebar:
         st.session_state.clear()
         st.rerun()
 
-# --- PENENTUAN HAK AKSES DAN STRUKTUR MENU ---
 if st.session_state["role"] == "admin":
     pg = st.navigation({
         "PAPAN KENDALI": [page_kompiler],
-        "MODUL ANGGARAN (RAB)": [page_rab_sementara],
+        "MODUL ANGGARAN (RAB)": [page_rab_master, page_rab_buat, page_rab_arsip, page_rab_rkakl, page_rab_matrik, page_rab_warroom],
         "MODUL EKSTRA": [page_tor, page_ekstrak]
     })
 else:
@@ -69,5 +69,4 @@ else:
         "USULAN PRODI": [page_kompiler]
     })
 
-# Menjalankan router
 pg.run()
