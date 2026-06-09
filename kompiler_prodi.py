@@ -84,6 +84,7 @@ if "tor" in akses_list or "ekstrak" in akses_list:
     ekstra_pages = []
     if "tor" in akses_list: ekstra_pages.append(page_tor)
     if "ekstrak" in akses_list: ekstra_pages.append(page_ekstrak)
+    if "ekstrak" in akses_list: ekstra_pages.append(page_surat)
     nav_dict["MODUL EKSTRA"] = ekstra_pages
     
 if "users" in akses_list and st.session_state["role"] == "admin":
