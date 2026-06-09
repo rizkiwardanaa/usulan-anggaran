@@ -55,8 +55,8 @@ page_rab_matrik  = st.Page("modul_rab/rab_matrik.py", title="5. Matrik Perubahan
 page_rab_warroom = st.Page("modul_rab/rab_warroom.py", title="6. Rapat Revisi", icon="🛠️")
 
 page_tor = st.Page("modul_ekstra/modul_tor.py", title="Generator TOR", icon="🤖")
+page_surat = st.Page("modul_ekstra/modul_surat.py", title="Generator Surat Otomatis", icon="✉️")
 page_ekstrak = st.Page("modul_ekstra/modul_ekstrak_rkakl.py", title="Ekstrak RKAKL PDF", icon="📥")
-page_surat = st.Page("modul_ekstra/modul_surat.py", title="Pengolah Surat Otomatis", icon="")
 
 # Halaman Khusus Super Admin
 page_users = st.Page("modul_utama/manajemen_user.py", title="Manajemen Pengguna", icon="👥")
