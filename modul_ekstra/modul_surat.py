@@ -28,11 +28,29 @@ def generate_surat_ai(hal, tujuan, isi_poin):
     """
     try:
         genai.configure(api_key=st.secrets["GEMINI_API_KEY_NEW"])
-        model = genai.GenerativeModel('gemini-1.5-flash')
+# MENGAMBIL LIST MODEL YANG TERSEDIA DI AKUN ANDA
+        model_list = genai.list_models()
+        model_yang_bisa = [m.name for m in model_list if 'generateContent' in m.supported_generation_methods]
+        
+        if not model_yang_bisa:
+            st.error("❌ Tidak ada model yang ditemukan.")
+            return None
+        
+        # Memilih model yang paling relevan
+        model_pilihan = model_yang_bisa[0] # Mengambil model pertama yang tersedia
+        for m in model_yang_bisa:
+            if 'gemini-1.5' in m: # Prioritas ke seri 1.5 jika ada
+                model_pilihan = m
+                break
+        
+        model = genai.GenerativeModel(model_pilihan)
         respons = model.generate_content(prompt)
-        return json.loads(respons.text.replace('```json', '').replace('```', '').strip())
+        
+        teks_respons = respons.text.replace('```json', '').replace('```', '').strip()
+        return json.loads(teks_respons)
+            
     except Exception as e:
-        st.error(f"Error AI: {e}")
+        st.error(f"❌ Error Detail: {e}")
         return None
 
 def build_surat_docx(meta, narasi):
