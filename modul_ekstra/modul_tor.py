@@ -1,6 +1,5 @@
 import streamlit as st
 import pandas as pd
-from sqlalchemy import create_engine
 import google.generativeai as genai
 from docx import Document
 from docx.shared import Pt, Inches, Cm
@@ -9,60 +8,8 @@ from io import BytesIO
 import json
 from datetime import datetime
 
-# --- KONEKSI DATABASE ---
-@st.cache_resource
-def get_engine():
-    return create_engine(st.secrets["DB_URL"], pool_size=5, max_overflow=10)
-
-engine = get_engine()
-# -------------------------------------------------------------
-
-def format_rupiah(x):
-    try: return f"{float(x):,.0f}".replace(',', '.')
-    except (ValueError, TypeError): return x
-
-def format_tgl_indo(tgl_str):
-    if not tgl_str: return ""
-    try:
-        tgl_clean = str(tgl_str)[:10]
-        dt = datetime.strptime(tgl_clean, "%Y-%m-%d")
-        bulan_indo = ["", "Januari", "Februari", "Maret", "April", "Mei", "Juni", 
-                      "Juli", "Agustus", "September", "Oktober", "November", "Desember"]
-        return f"{dt.day} {bulan_indo[dt.month]} {dt.year}"
-    except:
-        return str(tgl_str)[:10]
-
-def split_kode(teks):
-    s = str(teks).strip()
-    if " - " in s:
-        parts = s.split(" - ", 1)
-        return parts[0].strip(), parts[1].strip()
-    parts = s.split(" ", 1)
-    if len(parts) == 2:
-        first_part = parts[0].strip()
-        if any(c.isdigit() for c in first_part) or len(first_part) <= 8 or "." in first_part:
-            return first_part, parts[1].strip()
-    if any(c.isdigit() for c in s) or len(s) <= 8 or "." in s:
-        return s, ""
-    return "", s
-
-@st.cache_data(ttl=60)
-def load_active_rab():
-    conn = engine.connect()
-    try:
-        df_utama = pd.read_sql("SELECT * FROM rab_utama WHERE \"Is_Active\" = 1", conn)
-        if not df_utama.empty:
-            ids = tuple(df_utama['ID_RAB'].tolist())
-            if len(ids) == 1:
-                df_detail = pd.read_sql(f"SELECT * FROM rab_detail WHERE \"ID_RAB\" = '{ids[0]}'", conn)
-            else:
-                df_detail = pd.read_sql(f"SELECT * FROM rab_detail WHERE \"ID_RAB\" IN {ids}", conn)
-        else:
-            df_detail = pd.DataFrame()
-    except Exception as e:
-        df_utama, df_detail = pd.DataFrame(), pd.DataFrame()
-    conn.close()
-    return df_utama, df_detail
+# --- MENGAMBIL FUNGSI DARI GUDANG INTI ---
+from utils import load_table, split_kode, format_rupiah, format_tgl_indo
 
 # --- FUNGSI AI GEMINI (AUTO-FALLBACK LIMIT) ---
 def generate_narasi_tor_json(kegiatan, total_anggaran, sasaran, list_belanja, poin_tambahan):
@@ -344,7 +291,16 @@ def show_page():
     st.title("🤖 Asisten Penyusun TOR Otomatis")
     st.caption("Didukung oleh Google Gemini AI. Menghasilkan struktur TOR standar Universitas.")
     
-    df_utama, df_detail = load_active_rab()
+    # --- LAZY LOADING DATA VIA UTILS ---
+    # Memuat data yang AKTIF saja untuk efisiensi
+    df_utama = load_table("rab_utama", ["ID_RAB", "Kegiatan", "Is_Active", "Tahun", "Sumber_Dana", "KRO", "RO", "Sasaran", "Volume", "Satuan", "Tanggal", "Tgl_Cetak"], 'WHERE "Is_Active" = 1')
+    
+    if not df_utama.empty:
+        ids = tuple(df_utama['ID_RAB'].tolist())
+        where_det = f"WHERE \"ID_RAB\" = '{ids[0]}'" if len(ids) == 1 else f"WHERE \"ID_RAB\" IN {ids}"
+        df_detail = load_table("rab_detail", ["ID_RAB", "Total_Biaya", "Uraian"], where_det)
+    else:
+        df_detail = pd.DataFrame()
     
     if df_utama.empty:
         st.warning("⚠️ Belum ada dokumen RAB yang berstatus AKTIF. Silakan aktifkan RAB di modul Pengolah RAB terlebih dahulu.")
@@ -371,7 +327,7 @@ def show_page():
         # --- AUTO DETECT SASARAN KEGIATAN SESUAI KRO ---
         sasaran_awal = df_keg_utama['Sasaran']
         if str(sasaran_awal).strip() == "-" or not sasaran_awal:
-            sasaran_awal = f"Peningkatan Kualitas {kro_name.strip('() ')}" if kro_name else ""
+            sasaran_awal = f"Peningkatan {kro_name.strip('() ')}" if kro_name else ""
 
         st.info(f"**Total Pagu Anggaran:** Rp {format_rupiah(tot_rp)}")
         
@@ -492,5 +448,6 @@ def show_page():
                 )
         else:
             st.warning("⚠️ Anda belum menyusun narasi. Silakan klik 'Auto-Generate Narasi TOR' di tab 2.")
-# (Letakkan di baris paling akhir file, jangan diberi indentasi/spasi di depannya)
+
+# PASTIKAN BARIS INI ADA DI PALING BAWAH FILE:
 show_page()
