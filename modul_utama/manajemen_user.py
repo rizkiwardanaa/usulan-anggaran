@@ -5,15 +5,20 @@ from utils import engine, save_table, init_users_table, log_audit
 st.title("👥 Manajemen Pengguna & Hak Akses")
 st.caption("Panel eksklusif Super Admin untuk mengatur kredensial login dan menu navigasi.")
 
-# Muat data user dari database
 df_users = init_users_table()
 
-# Membantu menerjemahkan kode menu ke nama yang mudah dibaca
+# PEMECAHAN HAK AKSES HINGGA LEVEL TAB SPESIFIK
 MENU_OPTIONS = {
     "kompiler": "Dashboard Usulan (Kompiler)",
-    "rab": "Pengolah Anggaran (Seluruh Tab RAB)",
+    "rab_master": "RAB - 1. Master Data",
+    "rab_buat": "RAB - 2. Buat / Edit RAB",
+    "rab_arsip": "RAB - 3. Arsip & Versi",
+    "rab_rkakl": "RAB - 4. Rekap RKAKL",
+    "rab_matrik": "RAB - 5. Matrik Perubahan",
+    "rab_warroom": "RAB - 6. Rapat Revisi (War Room)",
     "tor": "Generator TOR AI",
     "ekstrak": "Ekstraktor RKAKL PDF",
+    "surat": "Pengolah Surat Otomatis",
     "users": "Panel Super Admin (Manajemen User)"
 }
 
@@ -21,7 +26,6 @@ col_list, col_form = st.columns([1.5, 1])
 
 with col_list:
     st.subheader("Daftar Pengguna Aktif")
-    # Menampilkan tabel sederhana
     df_tampil = df_users[["Username", "Nama_Tampil", "Role"]].copy()
     st.dataframe(df_tampil, use_container_width=True, hide_index=True)
     
@@ -46,19 +50,17 @@ with col_form:
         input_pass = st.text_input("Password", type="password")
         input_nama = st.text_input("Nama Tampil (Contoh: Dekan FIB)")
         
-        # --- PERUBAHAN DISINI: Penambahan Role Pimpinan ---
         input_role = st.selectbox(
             "Pilih Hak Akses (Role):", 
             ["prodi", "pimpinan", "admin"],
             format_func=lambda x: "1. Prodi (Hanya Buat Usulan)" if x == "prodi" else "2. Pimpinan (Hanya Review Usulan)" if x == "pimpinan" else "3. Super Admin (Akses Sistem Penuh)"
         )
         
-        # Pilihan Akses Menu dengan Checkbox/Multiselect
         akses_pilihan = st.multiselect(
-            "Izinkan Akses ke Modul Berikut:",
+            "Izinkan Akses ke Tab Berikut:",
             options=list(MENU_OPTIONS.keys()),
             format_func=lambda x: MENU_OPTIONS[x],
-            default=["kompiler"] # Default setiap user minimal bisa buka dashboard
+            default=["kompiler"] 
         )
         
         if st.form_submit_button("Simpan Data Pengguna", type="primary"):
@@ -69,7 +71,6 @@ with col_form:
             else:
                 str_akses = ",".join(akses_pilihan)
                 
-                # Jika user sudah ada, update. Jika belum, tambah baru.
                 if input_uname in df_users["Username"].values:
                     df_users.loc[df_users["Username"] == input_uname, ["Password", "Role", "Nama_Tampil", "Akses_Menu"]] = [input_pass, input_role, input_nama, str_akses]
                     pesan_log = "Mengubah data kredensial"
