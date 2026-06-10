@@ -20,23 +20,31 @@ def init_users_table():
     try:
         with engine.connect() as conn:
             df = pd.read_sql("SELECT * FROM rab_users", conn)
-            if df.empty: raise ValueError("Tabel kosong")
             return df
-    except Exception:
-        # Menyuntikkan data awal (Seeding)
-        default_users = [
-            {"Username": "admin", "Password": "adminfib", "Role": "admin", "Nama_Tampil": "Fakultas Ilmu Budaya (Admin)", "Akses_Menu": "kompiler,rab,tor,ekstrak,users"},
-            {"Username": "sasindo", "Password": "123", "Role": "prodi", "Nama_Tampil": "Sastra Indonesia", "Akses_Menu": "kompiler"},
-            {"Username": "sasing", "Password": "123", "Role": "prodi", "Nama_Tampil": "Sastra Inggris", "Akses_Menu": "kompiler"},
-            {"Username": "etno", "Password": "123", "Role": "prodi", "Nama_Tampil": "Etnomusikologi", "Akses_Menu": "kompiler"},
-            {"Username": "tari", "Password": "123", "Role": "prodi", "Nama_Tampil": "Tari", "Akses_Menu": "kompiler"},
-            {"Username": "kajian", "Password": "123", "Role": "prodi", "Nama_Tampil": "Kajian Budaya (S2)", "Akses_Menu": "kompiler"},
-            {"Username": "p2mf", "Password": "123", "Role": "prodi", "Nama_Tampil": "Pusat Penjaminan Mutu", "Akses_Menu": "kompiler"}
-        ]
-        df_users = pd.DataFrame(default_users)
-        with engine.begin() as conn:
-            df_users.to_sql("rab_users", conn, if_exists="replace", index=False)
-        return df_users
+            
+    except Exception as e:
+        err_str = str(e).lower()
+        # HANYA LAKUKAN RESET JIKA TABEL BENAR-BENAR TIDAK DITEMUKAN
+        if "does not exist" in err_str or "not found" in err_str or "relation" in err_str:
+            default_users = [
+                {"Username": "admin", "Password": "adminfib", "Role": "admin", "Nama_Tampil": "Fakultas Ilmu Budaya (Admin)", "Akses_Menu": "kompiler,rab,tor,ekstrak,users"},
+                {"Username": "sasindo", "Password": "123", "Role": "prodi", "Nama_Tampil": "Sastra Indonesia", "Akses_Menu": "kompiler"},
+                {"Username": "sasing", "Password": "123", "Role": "prodi", "Nama_Tampil": "Sastra Inggris", "Akses_Menu": "kompiler"},
+                {"Username": "etno", "Password": "123", "Role": "prodi", "Nama_Tampil": "Etnomusikologi", "Akses_Menu": "kompiler"},
+                {"Username": "tari", "Password": "123", "Role": "prodi", "Nama_Tampil": "Tari", "Akses_Menu": "kompiler"},
+                {"Username": "kajian", "Password": "123", "Role": "prodi", "Nama_Tampil": "Kajian Budaya (S2)", "Akses_Menu": "kompiler"},
+                {"Username": "p2mf", "Password": "123", "Role": "prodi", "Nama_Tampil": "Pusat Penjaminan Mutu", "Akses_Menu": "kompiler"}
+            ]
+            df_users = pd.DataFrame(default_users)
+            try:
+                with engine.begin() as conn:
+                    df_users.to_sql("rab_users", conn, if_exists="replace", index=False)
+            except Exception:
+                pass
+            return df_users
+        else:
+            # Jika error karena koneksi drop sesaat, kembalikan dataframe kosong agar tidak merusak data
+            return pd.DataFrame()
 
 def authenticate_user(username, password):
     """Mencocokkan data login dengan database"""
