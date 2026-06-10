@@ -68,14 +68,22 @@ def log_audit(aksi, detail):
 
 @st.cache_data(ttl=300)
 def get_available_years():
+    # Selalu memunculkan Tahun Saat Ini dan Tahun Depan sebagai default
+    tahun_sekarang = datetime.now().year
+    default_years = [str(tahun_sekarang), str(tahun_sekarang + 1)]
+    
     try:
         with engine.connect() as conn:
             df = pd.read_sql('SELECT DISTINCT "Tahun" FROM rab_utama', conn)
             if not df.empty:
-                years = df['Tahun'].astype(str).tolist()
-                return sorted(list(set(years + [str(datetime.now().year + 1)])), reverse=True)
-    except Exception: pass
-    return [str(datetime.now().year + 1)]
+                db_years = df['Tahun'].astype(str).tolist()
+                # Gabungkan tahun dari database dengan default_years, hilangkan duplikat, lalu urutkan
+                return sorted(list(set(db_years + default_years)), reverse=True)
+    except Exception: 
+        pass
+    
+    # Jika database error/kosong, kembalikan default_years (contoh: 2027, 2026)
+    return sorted(default_years, reverse=True)
 
 @st.cache_data(ttl=300)
 def load_table(table_name, default_cols, where_clause=""):
