@@ -219,17 +219,24 @@ def show_page():
         st.title("📊 Dashboard Monitoring & Review")
         
 # PERSIAPAN OPSI SOFT-MAPPING AKOMODASI (Ditarik dari RKAKL Aktif)
-        # Tambahkan pemanggilan kolom "Sumber_Dana"
-        df_rab_aktif = load_table("rab_utama", ["Kegiatan", "Sumber_Dana", "Is_Active", "Tahun"], 'WHERE "Is_Active" = 1')
+        # Tambahkan pemanggilan kolom "Sumber_Dana" dan "Alokasi"
+        df_rab_aktif = load_table("rab_utama", ["Kegiatan", "Sumber_Dana", "Alokasi", "Is_Active", "Tahun"], 'WHERE "Is_Active" = 1')
         
         if not df_rab_aktif.empty:
-            # Mengambil kombinasi unik Kegiatan dan Sumber Dana, lalu diurutkan
-            keg_unik = df_rab_aktif[['Kegiatan', 'Sumber_Dana']].drop_duplicates().sort_values(by='Kegiatan')
-            list_kegiatan_rkakl = [f"✅ Diakomodasi via RKAKL: {row['Kegiatan']} ({row['Sumber_Dana']})" for _, row in keg_unik.iterrows()]
+            # Pastikan nilai Alokasi berupa angka dan hitung total per kegiatan
+            df_rab_aktif['Alokasi'] = pd.to_numeric(df_rab_aktif['Alokasi'], errors='coerce').fillna(0)
+            keg_unik = df_rab_aktif.groupby(['Kegiatan', 'Sumber_Dana'])['Alokasi'].sum().reset_index()
+            keg_unik = keg_unik.sort_values(by='Kegiatan')
+            
+            # Rangkai teks dropdown lengkap dengan nominal anggarannya
+            list_kegiatan_rkakl = [
+                f"✅ Diakomodasi via RKAKL: {row['Kegiatan']} ({row['Sumber_Dana']} - Rp {format_rupiah(row['Alokasi'])})" 
+                for _, row in keg_unik.iterrows()
+            ]
         else:
             list_kegiatan_rkakl = []
         
-        # Menyusun Dropdown Hybrid (Statik + Dinamik dengan Sumber Dana)
+        # Menyusun Dropdown Hybrid (Statik + Dinamik)
         opsi_akomodasi = [
             "- Belum Ditentukan -", 
             "⏳ Dianggarkan di Tahun Anggaran Selanjutnya", 
