@@ -320,6 +320,7 @@ def show_page():
             "- Belum Ditentukan -", 
             "⏳ Dianggarkan di Tahun Anggaran Selanjutnya", 
             "🔄 Dipertimbangkan masuk ke Revisi Anggaran Mendatang"
+            "🔄 Diusulkan melalui Anggaran Rektorat"
         ] + list_kegiatan_rkakl
 
         col_info, col_toggle = st.columns([3, 1])
