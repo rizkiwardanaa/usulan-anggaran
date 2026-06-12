@@ -8,13 +8,21 @@ st.title("📝 Buat / Edit Kegiatan RAB")
 list_tahun = get_available_years()
 tahun_aktif = st.sidebar.selectbox("📅 Pilih Tahun Anggaran Aktif:", list_tahun)
 
+# --- FUNGSI PEMBERSIH SPASI OTOMATIS ---
+def bersihkan_spasi(df):
+    """Menghapus spasi nyasar di awal dan akhir pada seluruh kolom teks agar dropdown tidak putus"""
+    if not df.empty:
+        for col in df.select_dtypes(include=['object']).columns:
+            df[col] = df[col].astype(str).str.strip()
+    return df
+
 # --- LAZY LOADING ---
-df_m_kro = load_table("rab_m_kro", ["KRO", "Sumber_Dana"])
-df_m_ro = load_table("rab_m_ro", ["KRO", "RO", "Sumber_Dana"])
-df_m_komp = load_table("rab_m_komp", ["RO", "Komponen", "Sumber_Dana"])
-df_m_subkomp = load_table("rab_m_subkomp", ["Komponen", "Sub_Komponen", "Sumber_Dana"])
-df_m_akun = load_table("rab_m_akun", ["Sub_Komponen", "Account_Code", "Account_Name", "Sumber_Dana"]) 
-df_m_pejabat = load_table("rab_m_pejabat", ["Jabatan", "Nama", "NIP"])
+df_m_kro = bersihkan_spasi(load_table("rab_m_kro", ["KRO", "Sumber_Dana"]))
+df_m_ro = bersihkan_spasi(load_table("rab_m_ro", ["KRO", "RO", "Sumber_Dana"]))
+df_m_komp = bersihkan_spasi(load_table("rab_m_komp", ["RO", "Komponen", "Sumber_Dana"]))
+df_m_subkomp = bersihkan_spasi(load_table("rab_m_subkomp", ["Komponen", "Sub_Komponen", "Sumber_Dana"]))
+df_m_akun = bersihkan_spasi(load_table("rab_m_akun", ["Sub_Komponen", "Account_Code", "Account_Name", "Sumber_Dana"]))
+df_m_pejabat = bersihkan_spasi(load_table("rab_m_pejabat", ["Jabatan", "Nama", "NIP"]))
 
 df_rab_utama = load_table("rab_utama", ["ID_RAB", "Tanggal", "Tahun", "Tgl_Cetak", "Sumber_Dana", "KRO", "RO", "Komponen", "Sub_Komponen", "Kegiatan", "Sasaran", "Volume", "Satuan", "Alokasi", "Jabatan", "Nama_Pejabat", "NIP_Pejabat", "Versi_RAB", "Is_Active", "Catatan"], f"WHERE \"Tahun\" = '{tahun_aktif}'")
 
