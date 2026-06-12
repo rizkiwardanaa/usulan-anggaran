@@ -162,7 +162,7 @@ def generate_surat_html(meta, narasi):
         @page {{ size: A4 portrait; margin: 10mm; }}
         body {{ 
             font-family: 'Times New Roman', Times, serif; 
-            font-size: 11.5pt; 
+            font-size: 12pt; 
             line-height: 1.5; 
             color: #000; 
             text-align: justify; 
@@ -176,7 +176,7 @@ def generate_surat_html(meta, narasi):
             left: 50%; 
             transform: translate(-50%, -50%); 
             opacity: 0.15; 
-            width: 450px; 
+            width: 750px; 
             z-index: -1; 
         }}
         .footer-img {{ 
