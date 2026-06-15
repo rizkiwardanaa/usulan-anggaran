@@ -45,7 +45,8 @@ def generate_surat_ai(hal, tujuan, isi_poin):
         
         model = genai.GenerativeModel(model_pilihan.replace("models/", ""))
         respons = model.generate_content(prompt)
-        return json.loads(respons.text.replace('```json', '').replace('```', '').strip())
+        return json.loads(respons.text.replace('```json', '').replace('
+```', '').strip())
     
     except Exception as e:
         if "429" in str(e):
@@ -55,7 +56,7 @@ def generate_surat_ai(hal, tujuan, isi_poin):
         return None
 
 # --- BUILDER SURAT DINAS (.DOCX) ---
-def build_surat_docx(meta, narasi):
+def build_surat_docx(meta, narasi, tampilkan_paraf=True):
     doc = Document()
     
     section = doc.sections[0]
@@ -116,18 +117,20 @@ def build_surat_docx(meta, narasi):
     
     doc.add_paragraph("\n")
     
-    t_paraf = doc.add_table(rows=4, cols=3)
-    t_paraf.style = 'Table Grid'
-    for row in t_paraf.rows:
-        row.cells[0].width = Cm(1.0)
-        row.cells[1].width = Cm(6.5)
-        row.cells[2].width = Cm(2.5)
+    # KONDISI: Jika Opsi Paraf Dicentang
+    if tampilkan_paraf:
+        t_paraf = doc.add_table(rows=4, cols=3)
+        t_paraf.style = 'Table Grid'
+        for row in t_paraf.rows:
+            row.cells[0].width = Cm(1.0)
+            row.cells[1].width = Cm(6.5)
+            row.cells[2].width = Cm(2.5)
 
-    data = [["NO", "JABATAN", "PARAF"], ["1", "Wakil Dekan Bidang Keuangan dan Umum", ""], ["2", "Kepala Bagian Umum", ""], ["3", "Staf Perencanaan", ""]]
-    for i, row in enumerate(t_paraf.rows):
-        for j, cell in enumerate(row.cells): 
-            cell.text = data[i][j]
-            if i == 0: cell.paragraphs[0].runs[0].bold = True
+        data = [["NO", "JABATAN", "PARAF"], ["1", "Wakil Dekan Bidang Keuangan dan Umum", ""], ["2", "Kepala Bagian Umum", ""], ["3", "Staf Perencanaan", ""]]
+        for i, row in enumerate(t_paraf.rows):
+            for j, cell in enumerate(row.cells): 
+                cell.text = data[i][j]
+                if i == 0: cell.paragraphs[0].runs[0].bold = True
 
     output = BytesIO()
     doc.save(output)
@@ -135,7 +138,7 @@ def build_surat_docx(meta, narasi):
 
 
 # --- BUILDER SURAT PDF (HTML DENGAN GAMBAR & WATERMARK) ---
-def generate_surat_html(meta, narasi):
+def generate_surat_html(meta, narasi, tampilkan_paraf=True):
     img_header = get_image_base64("Header Kop Surat.jpg")
     img_footer = get_image_base64("Footer Kop Surat.jpg")
     img_maskot = get_image_base64("Maskot Baru.png")
@@ -144,7 +147,7 @@ def generate_surat_html(meta, narasi):
     html_footer = f'<img src="data:image/jpeg;base64,{img_footer}" class="footer-img">' if img_footer else ''
     html_watermark = f'<img src="data:image/png;base64,{img_maskot}" class="watermark-img">' if img_maskot else ''
 
-    # PRE-FORMAT STRING AGAR AMAN DARI SYNTAX ERROR DI PYTHON CLOUD
+    # PRE-FORMAT STRING AGAR AMAN
     tujuan_html = meta['tujuan'].replace('\n', '<br>')
     nomor_surat = meta['nomor']
     tgl_surat = meta['tgl_surat']
@@ -156,13 +159,27 @@ def generate_surat_html(meta, narasi):
     dekan_nama = meta['dekan_nama']
     dekan_nip = meta['dekan_nip']
 
+    # KONDISI HTML PARAF
+    html_paraf = ""
+    if tampilkan_paraf:
+        html_paraf = """
+        <div class="paraf-box">
+            <table class="paraf-table">
+                <tr><th style="width: 10%; text-align: center;">NO</th><th style="width: 65%;">JABATAN</th><th style="width: 25%;">PARAF</th></tr>
+                <tr><td style="text-align: center;">1</td><td>Wakil Dekan Bidang Keuangan dan Umum</td><td></td></tr>
+                <tr><td style="text-align: center;">2</td><td>Kepala Bagian Umum</td><td></td></tr>
+                <tr><td style="text-align: center;">3</td><td>Staf Perencanaan</td><td></td></tr>
+            </table>
+        </div>
+        """
+
     html = f"""<!DOCTYPE html>
     <html><head><meta charset="utf-8">
     <style>
         @page {{ size: A4 portrait; margin: 10mm; }}
         body {{ 
             font-family: 'Times New Roman', Times, serif; 
-            font-size: 12pt; 
+            font-size: 11.5pt; 
             line-height: 1.5; 
             color: #000; 
             text-align: justify; 
@@ -176,7 +193,7 @@ def generate_surat_html(meta, narasi):
             left: 50%; 
             transform: translate(-50%, -50%); 
             opacity: 0.15; 
-            width: 750px; 
+            width: 450px; 
             z-index: -1; 
         }}
         .footer-img {{ 
@@ -232,14 +249,7 @@ def generate_surat_html(meta, narasi):
         NIP {dekan_nip}
     </div>
     
-    <div class="paraf-box">
-        <table class="paraf-table">
-            <tr><th style="width: 10%; text-align: center;">NO</th><th style="width: 65%;">JABATAN</th><th style="width: 25%;">PARAF</th></tr>
-            <tr><td style="text-align: center;">1</td><td>Wakil Dekan Bidang Keuangan dan Umum</td><td></td></tr>
-            <tr><td style="text-align: center;">2</td><td>Kepala Bagian Umum</td><td></td></tr>
-            <tr><td style="text-align: center;">3</td><td>Staf Perencanaan</td><td></td></tr>
-        </table>
-    </div>
+    {html_paraf}
     
     {html_footer}
     
@@ -272,6 +282,10 @@ def show_page():
             'dekan_nama': "Prof. Dr. M. Bahri Arifin, M.Hum.",
             'dekan_nip': "196211271989031004"
         }
+        
+        st.markdown("---")
+        # --- OPSI PARAF ---
+        opsi_paraf = st.checkbox("Tampilkan Kolom Paraf Pejabat", value=True, help="Hapus centang jika surat ini tidak membutuhkan paraf berjenjang.")
     
     with st.container(border=True):
         st.subheader("2. Materi & Poin Utama Surat")
@@ -300,11 +314,10 @@ def show_page():
         st.markdown("### 🖨️ Cetak Dokumen")
         col_x1, col_x2 = st.columns(2)
         
-        # Penanganan nama file agar aman
         hal_safe = meta['hal'].replace(' ', '_')
         
         with col_x1:
-            file_word = build_surat_docx(meta, st.session_state['surat_narasi'])
+            file_word = build_surat_docx(meta, st.session_state['surat_narasi'], tampilkan_paraf=opsi_paraf)
             st.download_button(
                 label="📥 Download Surat (.docx)",
                 data=file_word,
@@ -314,7 +327,7 @@ def show_page():
             )
         
         with col_x2:
-            html_print = generate_surat_html(meta, st.session_state['surat_narasi'])
+            html_print = generate_surat_html(meta, st.session_state['surat_narasi'], tampilkan_paraf=opsi_paraf)
             if st.download_button(
                 label="📑 Cetak PDF (Format Template Gambar)",
                 data=html_print.encode('utf-8'),
