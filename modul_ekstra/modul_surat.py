@@ -1,5 +1,6 @@
 import streamlit as st
 import google.generativeai as genai
+import pandas as pd
 from docx import Document
 from docx.shared import Pt, Cm
 from docx.enum.text import WD_ALIGN_PARAGRAPH
@@ -9,18 +10,74 @@ import os
 import base64
 from datetime import datetime
 
-from utils import log_audit, format_tgl_indo
+# Mengambil 'engine' dari utils untuk menyimpan draf ke database
+from utils import log_audit, format_tgl_indo, engine
 
-# --- FUNGSI BANTUAN MEMBACA GAMBAR ---
+# =======================================================
+# FUNGSI DATABASE UNTUK DRAF PERMANEN
+# =======================================================
+def load_draft_from_db(username):
+    """Membaca draf terakhir milik user dari database"""
+    try:
+        with engine.connect() as conn:
+            df = pd.read_sql("SELECT * FROM rab_draft_surat WHERE \"Username\"='" + username + "'", conn)
+            if not df.empty:
+                return json.loads(df.iloc[0]['Meta_JSON']), json.loads(df.iloc[0]['Narasi_JSON'])
+    except Exception as e:
+        err_str = str(e).lower()
+        if "does not exist" in err_str or "not found" in err_str or "relation" in err_str:
+            # Auto-Heal: Buat tabel jika belum ada
+            df_kosong = pd.DataFrame(columns=["Username", "Meta_JSON", "Narasi_JSON", "Waktu_Simpan"])
+            try:
+                with engine.begin() as conn:
+                    df_kosong.to_sql("rab_draft_surat", conn, if_exists="append", index=False)
+            except: pass
+    return None, None
+
+def save_draft_to_db(username, meta, narasi):
+    """Menyimpan atau menimpa draf milik user ke database"""
+    try:
+        with engine.connect() as conn:
+            df_all = pd.read_sql("SELECT * FROM rab_draft_surat", conn)
+    except:
+        df_all = pd.DataFrame(columns=["Username", "Meta_JSON", "Narasi_JSON", "Waktu_Simpan"])
+        
+    # Hapus draf lama milik user ini, lalu masukkan yang baru
+    df_all = df_all[df_all["Username"] != username]
+    new_row = pd.DataFrame([{
+        "Username": username,
+        "Meta_JSON": json.dumps(meta),
+        "Narasi_JSON": json.dumps(narasi),
+        "Waktu_Simpan": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    }])
+    df_all = pd.concat([df_all, new_row], ignore_index=True)
+    
+    try:
+        with engine.begin() as conn:
+            df_all.to_sql("rab_draft_surat", conn, if_exists="replace", index=False)
+    except Exception as e:
+        st.error("Gagal menyimpan draf ke database: " + str(e))
+
+def delete_draft_from_db(username):
+    """Menghapus draf saat user menekan tombol Reset"""
+    try:
+        with engine.connect() as conn:
+            df_all = pd.read_sql("SELECT * FROM rab_draft_surat", conn)
+        df_all = df_all[df_all["Username"] != username]
+        with engine.begin() as conn:
+            df_all.to_sql("rab_draft_surat", conn, if_exists="replace", index=False)
+    except: pass
+
+# =======================================================
+# FUNGSI BANTUAN & AI
+# =======================================================
 def get_image_base64(image_path):
     if os.path.exists(image_path):
         with open(image_path, "rb") as img_file:
             return base64.b64encode(img_file.read()).decode('utf-8')
     return ""
 
-# --- FUNGSI AI GEMINI ---
 def generate_surat_ai(hal, tujuan, isi_poin):
-    # Menggunakan metode teks biasa (tanpa f-string) agar aman dari SyntaxError
     prompt = """Anda adalah staf administrasi Fakultas Ilmu Budaya Universitas Mulawarman. 
 Buatlah draf narasi surat dinas berdasarkan data:
 - Hal: [HAL]
@@ -60,7 +117,9 @@ Output JSON murni dengan kunci: "pembuka", "isi", "penutup"."""
             st.error("Error AI: " + str(e))
         return None
 
-# --- BUILDER SURAT DINAS (.DOCX) ---
+# =======================================================
+# FUNGSI CETAK DOCX & HTML
+# =======================================================
 def build_surat_docx(meta, narasi, tampilkan_paraf=True):
     doc = Document()
     
@@ -143,7 +202,6 @@ def build_surat_docx(meta, narasi, tampilkan_paraf=True):
     return output.getvalue()
 
 
-# --- BUILDER SURAT PDF (HTML DENGAN GAMBAR & WATERMARK) ---
 def generate_surat_html(meta, narasi, tampilkan_paraf=True):
     img_header = get_image_base64("Header Kop Surat.jpg")
     img_footer = get_image_base64("Footer Kop Surat.jpg")
@@ -166,45 +224,17 @@ def generate_surat_html(meta, narasi, tampilkan_paraf=True):
         </div>
         """
 
-    # Menggunakan kurung kurawal tunggal biasa karena ini string mentah, bukan f-string
     html_template = """<!DOCTYPE html>
     <html><head><meta charset="utf-8">
     <style>
         @page { size: A4 portrait; margin: 10mm; }
-        body { 
-            font-family: 'Times New Roman', Times, serif; 
-            font-size: 11.5pt; 
-            line-height: 1.5; 
-            color: #000; 
-            text-align: justify; 
-            position: relative;
-            padding-bottom: 120px;
-        }
+        body { font-family: 'Times New Roman', Times, serif; font-size: 11.5pt; line-height: 1.5; color: #000; text-align: justify; position: relative; padding-bottom: 120px; }
         .header-img { width: 100%; display: block; margin-bottom: 25px; }
-        .watermark-img { 
-            position: fixed; 
-            top: 50%; 
-            left: 50%; 
-            transform: translate(-50%, -50%); 
-            opacity: 0.15; 
-            width: 450px; 
-            z-index: -1; 
-        }
-        .footer-img { 
-            position: fixed; 
-            bottom: 0; 
-            left: 0; 
-            width: 100%; 
-            z-index: 10; 
-        }
+        .watermark-img { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); opacity: 0.15; width: 450px; z-index: -1; }
+        .footer-img { position: fixed; bottom: 0; left: 0; width: 100%; z-index: 10; }
         table.meta-table { width: 100%; border-collapse: collapse; margin-bottom: 15px; border: none; }
         table.meta-table td { padding: 1px; vertical-align: top; border: none; }
-        .isi-surat p { 
-            text-indent: 0; 
-            margin-top: 5px; 
-            margin-bottom: 15px; 
-            text-align: justify; 
-        }
+        .isi-surat p { text-indent: 0; margin-top: 5px; margin-bottom: 15px; text-align: justify; }
         .tujuan { margin-bottom: 20px; margin-top: 15px; }
         .ttd-box { width: 250px; float: right; text-align: left; margin-top: 30px; }
         .paraf-box { width: 320px; float: left; margin-top: 80px; clear: left; }
@@ -214,22 +244,15 @@ def generate_surat_html(meta, narasi, tampilkan_paraf=True):
     </style></head><body>
     
     [WATERMARK]
-    
     [HEADER]
     
     <table class="meta-table">
-        <tr>
-            <td style="width: 12%;">Nomor</td><td style="width: 2%;">:</td><td style="width: 56%;">[NOMOR]</td>
-            <td style="width: 30%; text-align: right;">[TGL_SURAT]</td>
-        </tr>
+        <tr><td style="width: 12%;">Nomor</td><td style="width: 2%;">:</td><td style="width: 56%;">[NOMOR]</td><td style="width: 30%; text-align: right;">[TGL_SURAT]</td></tr>
         <tr><td>Lampiran</td><td>:</td><td colspan="2">[LAMPIRAN]</td></tr>
         <tr><td>Hal</td><td>:</td><td colspan="2">[HAL]</td></tr>
     </table>
     
-    <div class="tujuan">
-        Yth. [TUJUAN]<br>
-        Samarinda
-    </div>
+    <div class="tujuan">Yth. [TUJUAN]<br>Samarinda</div>
     
     <div class="isi-surat">
         <p>[PEMBUKA]</p>
@@ -237,42 +260,51 @@ def generate_surat_html(meta, narasi, tampilkan_paraf=True):
         <p>[PENUTUP]</p>
     </div>
     
-    <div class="ttd-box">
-        Dekan,<br><br><br><br><br>
-        <b>[DEKAN_NAMA]</b><br>
-        NIP [DEKAN_NIP]
-    </div>
-    
+    <div class="ttd-box">Dekan,<br><br><br><br><br><b>[DEKAN_NAMA]</b><br>NIP [DEKAN_NIP]</div>
     [PARAF]
-    
     [FOOTER]
     
     <div style="clear: both;"></div>
     </body></html>"""
 
-    # Melakukan inject data satu per satu agar sistem python tidak bingung
-    html_result = html_template.replace("[WATERMARK]", html_watermark)
-    html_result = html_result.replace("[HEADER]", html_header)
-    html_result = html_result.replace("[NOMOR]", meta['nomor'])
-    html_result = html_result.replace("[TGL_SURAT]", meta['tgl_surat'])
-    html_result = html_result.replace("[LAMPIRAN]", meta['lampiran'])
-    html_result = html_result.replace("[HAL]", meta['hal'])
+    html_result = html_template.replace("[WATERMARK]", html_watermark).replace("[HEADER]", html_header)
+    html_result = html_result.replace("[NOMOR]", meta['nomor']).replace("[TGL_SURAT]", meta['tgl_surat'])
+    html_result = html_result.replace("[LAMPIRAN]", meta['lampiran']).replace("[HAL]", meta['hal'])
     html_result = html_result.replace("[TUJUAN]", meta['tujuan'].replace('\n', '<br>'))
-    html_result = html_result.replace("[PEMBUKA]", narasi.get('pembuka', ''))
-    html_result = html_result.replace("[ISI]", narasi.get('isi', ''))
-    html_result = html_result.replace("[PENUTUP]", narasi.get('penutup', ''))
-    html_result = html_result.replace("[DEKAN_NAMA]", meta['dekan_nama'])
-    html_result = html_result.replace("[DEKAN_NIP]", meta['dekan_nip'])
-    html_result = html_result.replace("[PARAF]", html_paraf)
-    html_result = html_result.replace("[FOOTER]", html_footer)
+    html_result = html_result.replace("[PEMBUKA]", narasi.get('pembuka', '')).replace("[ISI]", narasi.get('isi', '')).replace("[PENUTUP]", narasi.get('penutup', ''))
+    html_result = html_result.replace("[DEKAN_NAMA]", meta['dekan_nama']).replace("[DEKAN_NIP]", meta['dekan_nip'])
+    html_result = html_result.replace("[PARAF]", html_paraf).replace("[FOOTER]", html_footer)
     
     return html_result
 
-# --- ANTARMUKA PENGGUNA (UI) ---
+# =======================================================
+# ANTARMUKA PENGGUNA (UI)
+# =======================================================
 def show_page():
-    st.title("✉️ Pengolah Surat Otomatis")
-    st.caption("Didukung oleh Google Gemini AI. Menghasilkan surat dinas dengan kop gambar dan watermark.")
+    # Identifikasi Username
+    username_aktif = st.session_state.get('username', 'user_anonim')
     
+    # MUAT DRAF DARI DATABASE SAAT PERTAMA KALI HALAMAN DIBUKA
+    if 'surat_draft_loaded' not in st.session_state:
+        db_meta, db_narasi = load_draft_from_db(username_aktif)
+        if db_meta and db_narasi:
+            st.session_state['surat_meta'] = db_meta
+            st.session_state['surat_narasi'] = db_narasi
+            st.toast("💡 Memuat draf pekerjaan Anda sebelumnya...", icon="🔄")
+        st.session_state['surat_draft_loaded'] = True
+        
+    def_meta = st.session_state.get('surat_meta', {})
+
+    col_title1, col_title2 = st.columns([3, 1])
+    col_title1.title("✉️ Pengolah Surat Otomatis")
+    col_title1.caption("Sistem otomatis menyimpan draf Anda setiap kali disimulasikan atau disimpan.")
+    
+    if col_title2.button("🗑️ Reset & Buat Baru", use_container_width=True):
+        delete_draft_from_db(username_aktif)
+        if 'surat_meta' in st.session_state: del st.session_state['surat_meta']
+        if 'surat_narasi' in st.session_state: del st.session_state['surat_narasi']
+        st.success("Draf dibersihkan. Memulai halaman baru!"); st.rerun()
+
     missing_files = []
     if not os.path.exists("Header Kop Surat.jpg"): missing_files.append("Header Kop Surat.jpg")
     if not os.path.exists("Footer Kop Surat.jpg"): missing_files.append("Footer Kop Surat.jpg")
@@ -285,11 +317,11 @@ def show_page():
         st.subheader("1. Identitas Surat")
         col1, col2, col3 = st.columns(3)
         meta = {
-            'nomor': col1.text_input("Nomor Surat", "499/UN17.13/PR.03.01/" + str(datetime.now().year)),
-            'lampiran': col2.text_input("Lampiran", "1 (satu) berkas"),
-            'tgl_surat': col3.text_input("Tanggal Surat", format_tgl_indo(datetime.now().strftime("%Y-%m-%d"))),
-            'hal': st.text_input("Hal / Perihal", "Tindak Lanjut Permintaan Data"),
-            'tujuan': st.text_area("Yth. / Pihak Tujuan", "Rektor\nUniversitas Mulawarman\nc.q Wakil Rektor Bidang Perencanaan, Kerjasama, dan Sistem Informasi"),
+            'nomor': col1.text_input("Nomor Surat", def_meta.get('nomor', "499/UN17.13/PR.03.01/" + str(datetime.now().year))),
+            'lampiran': col2.text_input("Lampiran", def_meta.get('lampiran', "1 (satu) berkas")),
+            'tgl_surat': col3.text_input("Tanggal Surat", def_meta.get('tgl_surat', format_tgl_indo(datetime.now().strftime("%Y-%m-%d")))),
+            'hal': st.text_input("Hal / Perihal", def_meta.get('hal', "Tindak Lanjut Permintaan Data")),
+            'tujuan': st.text_area("Yth. / Pihak Tujuan", def_meta.get('tujuan', "Rektor\nUniversitas Mulawarman\nc.q Wakil Rektor Bidang Perencanaan, Kerjasama, dan Sistem Informasi")),
             'dekan_nama': "Prof. Dr. M. Bahri Arifin, M.Hum.",
             'dekan_nip': "196211271989031004"
         }
@@ -306,7 +338,10 @@ def show_page():
                 narasi = generate_surat_ai(meta['hal'], meta['tujuan'], isi_poin)
                 if narasi:
                     st.session_state['surat_narasi'] = narasi
-                    st.success("Draft narasi selesai disusun! Silakan periksa di bawah.")
+                    st.session_state['surat_meta'] = meta
+                    # OTOMATIS SIMPAN KE DB SAAT DI-GENERATE
+                    save_draft_to_db(username_aktif, meta, narasi)
+                    st.success("Draft narasi selesai disusun & otomatis di-Backup ke Database!")
 
     if 'surat_narasi' in st.session_state:
         st.markdown("---")
@@ -317,9 +352,12 @@ def show_page():
             edit_isi = st.text_area("Paragraf Isi", value=st.session_state['surat_narasi'].get('isi', ''), height=150)
             edit_penutup = st.text_area("Paragraf Penutup", value=st.session_state['surat_narasi'].get('penutup', ''), height=80)
             
-            if st.form_submit_button("Simpan Perubahan Teks"):
+            if st.form_submit_button("💾 Simpan Perubahan Teks"):
                 st.session_state['surat_narasi'] = {'pembuka': edit_pembuka, 'isi': edit_isi, 'penutup': edit_penutup}
-                st.success("Teks berhasil diperbarui.")
+                st.session_state['surat_meta'] = meta
+                # SIMPAN PERUBAHAN MANUAL KE DB
+                save_draft_to_db(username_aktif, meta, st.session_state['surat_narasi'])
+                st.success("Perubahan Teks dan Identitas Surat berhasil disimpan secara Permanen!")
         
         st.markdown("### 🖨️ Cetak Dokumen")
         col_x1, col_x2 = st.columns(2)
